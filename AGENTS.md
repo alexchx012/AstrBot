@@ -27,6 +27,10 @@ Runs on `http://localhost:3000` by default.
 4. When committing, ensure to use conventional commits messages, such as `feat: add new agent for data analysis` or `fix: resolve bug in provider manager`.
 5. Use English for all new comments.
 6. For path handling, use `pathlib.Path` instead of string paths, and use `astrbot.core.utils.path_utils` to get the AstrBot data and temp directory.
+7. Before you submit any local fix, first check whether upstream has newer changes (for example with `git fetch upstream`). If upstream is ahead, do not commit the fix yet; sync upstream into the local tree first.
+8. Whenever upstream changes are synced, refresh `project_index/` in the same round, resolve any conflicts, and run the related tests before proceeding.
+9. If upstream had updates and tests pass, rebuild the local AstrBot image and run `docker compose -f compose-with-shipyard.yml up -d --build astrbot` before committing and pushing the fix.
+10. If upstream had no updates, you may commit and push the fix directly, but still rebuild the local AstrBot image and run `docker compose -f compose-with-shipyard.yml up -d --build astrbot` afterward.
 
 ## PR instructions
 

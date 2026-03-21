@@ -47,6 +47,7 @@ _patch_qq_botpy_formdata()
 
 class QQOfficialMessageEvent(AstrMessageEvent):
     MARKDOWN_NOT_ALLOWED_ERROR = "不允许发送原生 markdown"
+    URL_NOT_ALLOWED_ERROR = "不允许发送url"
     IMAGE_FILE_TYPE = 1
     VIDEO_FILE_TYPE = 2
     VOICE_FILE_TYPE = 3
@@ -400,9 +401,10 @@ class QQOfficialMessageEvent(AstrMessageEvent):
         try:
             return await send_func(payload)
         except botpy.errors.ServerError as err:
+            err_message = str(err)
             # QQ 流式 markdown 分片校验：内容必须以换行结尾。
             # 某些边界场景服务端仍可能判定失败，这里做一次修正重试。
-            if stream and self.STREAM_MARKDOWN_NEWLINE_ERROR in str(err):
+            if stream and self.STREAM_MARKDOWN_NEWLINE_ERROR in err_message:
                 retry_payload = payload.copy()
 
                 markdown_payload = retry_payload.get("markdown")
@@ -420,16 +422,23 @@ class QQOfficialMessageEvent(AstrMessageEvent):
                 )
                 return await send_func(retry_payload)
 
-            if (
-                self.MARKDOWN_NOT_ALLOWED_ERROR not in str(err)
-                or not payload.get("markdown")
-                or not plain_text
-            ):
+            if not payload.get("markdown") or not plain_text:
                 raise
 
-            logger.warning(
-                "[QQOfficial] markdown 发送被拒绝，回退到 content 模式重试。"
-            )
+            markdown_not_allowed = self.MARKDOWN_NOT_ALLOWED_ERROR in err_message
+            url_not_allowed = self.URL_NOT_ALLOWED_ERROR in err_message
+
+            if not markdown_not_allowed and not url_not_allowed:
+                raise
+
+            if url_not_allowed:
+                logger.warning(
+                    "[QQOfficial] markdown 内容触发 URL 限制，回退到 content 模式重试。"
+                )
+            else:
+                logger.warning(
+                    "[QQOfficial] markdown 发送被拒绝，回退到 content 模式重试。"
+                )
             fallback_payload = payload.copy()
             fallback_payload.pop("markdown", None)
             fallback_payload["content"] = plain_text
