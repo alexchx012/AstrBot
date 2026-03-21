@@ -315,6 +315,30 @@ def _extract_exec_text(result: dict, key: str) -> str:
     return str(value)
 
 
+def _extract_exec_field(result: dict, key: str):
+    value = result.get(key)
+    if value not in (None, ""):
+        return value
+
+    data = result.get("data")
+    if isinstance(data, dict):
+        value = data.get(key)
+        if value not in (None, ""):
+            return value
+        if key == "exit_code":
+            return_code = data.get("return_code")
+            if return_code not in (None, ""):
+                return return_code
+    return None
+
+
+def _extract_exec_text(result: dict, key: str) -> str:
+    value = _extract_exec_field(result, key)
+    if value is None:
+        return ""
+    return str(value)
+
+
 def _shell_exec_succeeded(result: dict) -> bool:
     if "success" in result:
         return bool(result.get("success"))

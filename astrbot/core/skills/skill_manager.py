@@ -218,8 +218,7 @@ def build_skills_prompt(skills: list[SkillInfo]) -> str:
 
         rendered_path = _sanitize_prompt_path_for_prompt(skill.path)
         if skill.source_type == "sandbox_only":
-            if not rendered_path:
-                rendered_path = _default_sandbox_skill_path(display_name)
+            rendered_path = _build_sandbox_prompt_path(display_name, rendered_path)
         elif not rendered_path:
             rendered_path = "<skills_root>/<skill_name>/SKILL.md"
 
