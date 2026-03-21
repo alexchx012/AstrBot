@@ -299,10 +299,34 @@ def _build_sync_and_scan_command() -> str:
     return f"{_build_apply_sync_command()}\n{_build_scan_command()}"
 
 
+def _extract_exec_field(result: dict, key: str):
+    value = result.get(key)
+    if value not in (None, ""):
+        return value
+
+    data = result.get("data")
+    if isinstance(data, dict):
+        value = data.get(key)
+        if value not in (None, ""):
+            return value
+        if key == "exit_code":
+            return_code = data.get("return_code")
+            if return_code not in (None, ""):
+                return return_code
+    return None
+
+
+def _extract_exec_text(result: dict, key: str) -> str:
+    value = _extract_exec_field(result, key)
+    if value is None:
+        return ""
+    return str(value)
+
+
 def _shell_exec_succeeded(result: dict) -> bool:
     if "success" in result:
         return bool(result.get("success"))
-    exit_code = result.get("exit_code")
+    exit_code = _extract_exec_field(result, "exit_code")
     return exit_code in (0, None)
 
 
@@ -311,9 +335,9 @@ def _format_exec_error_detail(result: dict) -> str:
 
     Keep the message compact while still surfacing exit code and stderr/stdout.
     """
-    exit_code = result.get("exit_code")
-    stderr = str(result.get("stderr", "") or "").strip()
-    stdout = str(result.get("stdout", "") or "").strip()
+    exit_code = _extract_exec_field(result, "exit_code")
+    stderr = _extract_exec_text(result, "stderr").strip()
+    stdout = _extract_exec_text(result, "stdout").strip()
     stderr_text = stderr[:500]
     stdout_text = stdout[:300]
     return f"exit_code={exit_code}, stderr={stderr_text!r}, stdout_tail={stdout_text!r}"
@@ -368,7 +392,7 @@ async def _scan_sandbox_skills(booter: ComputerBooter) -> dict | None:
         logger.error("[Computer] Skill sync phase=scan failed: %s", detail)
         raise RuntimeError(f"Failed to scan sandbox skills after sync: {detail}")
 
-    payload = _decode_sync_payload(str(scan_result.get("stdout", "") or ""))
+    payload = _decode_sync_payload(_extract_exec_text(scan_result, "stdout"))
     if payload is None:
         logger.warning("[Computer] Skill sync phase=scan returned empty payload")
     else:

@@ -7,14 +7,25 @@ from astrbot.core.computer import computer_client
 
 
 class _FakeShell:
-    def __init__(self, sync_payload_json: str):
+    def __init__(self, sync_payload_json: str, *, nested_stdout: bool = False):
         self.sync_payload_json = sync_payload_json
+        self.nested_stdout = nested_stdout
         self.commands: list[str] = []
 
     async def exec(self, command: str, **kwargs):
         _ = kwargs
         self.commands.append(command)
         if "PYBIN" in command and "managed_skills" in command:
+            if self.nested_stdout:
+                return {
+                    "success": True,
+                    "data": {
+                        "stdout": self.sync_payload_json,
+                        "stderr": "",
+                        "return_code": 0,
+                    },
+                    "error": None,
+                }
             return {
                 "success": True,
                 "stdout": self.sync_payload_json,
@@ -25,8 +36,8 @@ class _FakeShell:
 
 
 class _FakeBooter:
-    def __init__(self, sync_payload_json: str):
-        self.shell = _FakeShell(sync_payload_json)
+    def __init__(self, sync_payload_json: str, *, nested_stdout: bool = False):
+        self.shell = _FakeShell(sync_payload_json, nested_stdout=nested_stdout)
         self.uploads: list[tuple[str, str]] = []
 
     async def upload_file(self, path: str, file_name: str) -> dict:
@@ -121,3 +132,43 @@ def test_sync_skills_uses_managed_strategy_instead_of_wiping_all(
         }
     ]
 
+
+
+def test_sync_skills_reads_legacy_shipyard_nested_stdout(monkeypatch, tmp_path: Path):
+    skills_root = tmp_path / "skills"
+    temp_root = tmp_path / "temp"
+    skills_root.mkdir(parents=True, exist_ok=True)
+    temp_root.mkdir(parents=True, exist_ok=True)
+
+    captured = {"skills": None}
+
+    def _fake_set_cache(self, skills):
+        captured["skills"] = skills
+
+    monkeypatch.setattr(
+        "astrbot.core.computer.computer_client.get_astrbot_skills_path",
+        lambda: str(skills_root),
+    )
+    monkeypatch.setattr(
+        "astrbot.core.computer.computer_client.get_astrbot_temp_path",
+        lambda: str(temp_root),
+    )
+    monkeypatch.setattr(
+        "astrbot.core.computer.computer_client.SkillManager.set_sandbox_skills_cache",
+        _fake_set_cache,
+    )
+
+    booter = _FakeBooter(
+        '{"skills":[{"name":"python-sandbox","description":"ship","path":"/app/skills/python-sandbox/SKILL.md"}]}',
+        nested_stdout=True,
+    )
+
+    asyncio.run(computer_client._sync_skills_to_sandbox(booter))
+
+    assert captured["skills"] == [
+        {
+            "name": "python-sandbox",
+            "description": "ship",
+            "path": "/app/skills/python-sandbox/SKILL.md",
+        }
+    ]

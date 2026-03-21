@@ -128,6 +128,21 @@ def test_build_skills_prompt_keeps_placeholder_example_literal():
     assert example_fragment == "cat <skills_root>/<skill_name>/SKILL.md"
 
 
+def test_build_skills_prompt_accepts_workspace_relative_paths():
+    skills = [
+        SkillInfo(
+            name="foo",
+            description="do foo",
+            path="skills/foo/SKILL.md",
+            active=True,
+        ),
+    ]
+    prompt = build_skills_prompt(skills)
+    assert "using the **absolute path** shown above" not in prompt
+    assert "using the path shown above" in prompt
+    assert "cat skills/foo/SKILL.md" in prompt
+
+
 def test_build_skills_prompt_preserves_windows_absolute_path_in_example(monkeypatch):
     monkeypatch.setattr("astrbot.core.skills.skill_manager.os.name", "nt")
     skills = [

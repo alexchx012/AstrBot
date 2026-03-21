@@ -4,17 +4,64 @@ version: '3.8'
 
 services:
   astrbot:
+    image: alexchx012/astrbot:local
     build:
       context: .
       dockerfile: Dockerfile
-    image: astrbot:kimi-code
     container_name: astrbot
     restart: always
     ports: # mappings description: https://github.com/AstrBotDevs/AstrBot/issues/497
       - "6185:6185" # 必选，AstrBot WebUI 端口
       - "6199:6199" # 可选, QQ 个人号 WebSocket 端口
+      - "8000:8000" # 可选, Mnemosyne 管理面板端口；还需要在插件配置中把 admin_panel.host 设为 0.0.0.0
     environment:
       - TZ=Asia/Shanghai
+      - MNEMOSYNE_PLUGIN_REPO=https://github.com/lxfight/astrbot_plugin_mnemosyne.git
+      - MNEMOSYNE_PLUGIN_REF=main
+    command:
+      - /bin/sh
+      - -lc
+      - |
+        set -e
+        # The published image is runtime-oriented, so install a few tools commonly
+        # needed for local debugging and MCP/server development before startup.
+        if ! command -v git >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1 || ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+          apt-get update
+          apt-get install -y --no-install-recommends git curl nodejs npm
+          rm -rf /var/lib/apt/lists/*
+        fi
+        if ! command -v uv >/dev/null 2>&1 || ! command -v ruff >/dev/null 2>&1; then
+          python -m pip install --no-cache-dir uv ruff
+        fi
+        if ! command -v pnpm >/dev/null 2>&1; then
+          npm install -g pnpm
+        fi
+
+        MNEMOSYNE_PLUGIN_DIR=/AstrBot/data/plugins/astrbot_plugin_mnemosyne
+        MNEMOSYNE_REQUIREMENTS="$$MNEMOSYNE_PLUGIN_DIR/requirements.txt"
+        MNEMOSYNE_REQUIREMENTS_SHA_FILE=/AstrBot/data/plugins/.astrbot_plugin_mnemosyne.requirements.sha256
+
+        mkdir -p /AstrBot/data/plugins
+        if [ ! -d "$$MNEMOSYNE_PLUGIN_DIR/.git" ]; then
+          rm -rf "$$MNEMOSYNE_PLUGIN_DIR"
+          git clone --depth 1 --branch "$$MNEMOSYNE_PLUGIN_REF" "$$MNEMOSYNE_PLUGIN_REPO" "$$MNEMOSYNE_PLUGIN_DIR"
+        fi
+
+        if [ -f "$$MNEMOSYNE_REQUIREMENTS" ]; then
+          CURRENT_REQUIREMENTS_SHA="$$(sha256sum "$$MNEMOSYNE_REQUIREMENTS" | awk '{print $$1}')"
+          INSTALLED_REQUIREMENTS_SHA="$$(cat "$$MNEMOSYNE_REQUIREMENTS_SHA_FILE" 2>/dev/null || true)"
+          if [ "$$CURRENT_REQUIREMENTS_SHA" != "$$INSTALLED_REQUIREMENTS_SHA" ]; then
+            uv pip install --system --no-cache-dir -r "$$MNEMOSYNE_REQUIREMENTS"
+            printf '%s\n' "$$CURRENT_REQUIREMENTS_SHA" > "$$MNEMOSYNE_REQUIREMENTS_SHA_FILE"
+          fi
+        fi
+
+        exec python main.py
+    depends_on:
+      shipyard:
+        condition: service_started
+      milvus-standalone:
+        condition: service_healthy
     volumes:
       - ${PWD}/data:/AstrBot/data
       # - /etc/timezone:/etc/timezone:ro
@@ -25,23 +72,97 @@ services:
   shipyard:
     image: soulter/shipyard-bay:latest
     container_name: astrbot_shipyard
+    restart: always
     # ports:
     #   - "8156:8156"
     environment:
       - PORT=8156
       - DATABASE_URL=sqlite+aiosqlite:///./data/bay.db
-      - ACCESS_TOKEN=secret-token
+      - ACCESS_TOKEN=sk-d2r5g42ergvd5f12asdf2hgjgf6
       - MAX_SHIP_NUM=10
       - BEHAVIOR_AFTER_MAX_SHIP=reject
       - DOCKER_IMAGE=soulter/shipyard-ship:latest
       - DOCKER_NETWORK=astrbot_network
+      # Must stay host-absolute because Shipyard forwards it to Docker as a bind source.
       - SHIP_DATA_DIR=${PWD}/data/shipyard/ship_mnt_data
       - DEFAULT_SHIP_CPUS=1.0
       - DEFAULT_SHIP_MEMORY=512m
     volumes:
       - ${PWD}/data/shipyard/bay_data:/app/data
+      - ${PWD}/data/shipyard/ship_mnt_data:/app/shipyard/ship_mnt_data
       - ${PWD}/data/temp:/AstrBot/data/temp           # Bind the local temp directory to the sandbox so that the uploaded file can be accessed in the sandbox
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - astrbot_network
+
+  milvus-etcd:
+    image: quay.io/coreos/etcd:v3.5.18
+    container_name: milvus-etcd
+    restart: always
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    command: etcd -advertise-client-urls=http://milvus-etcd:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    volumes:
+      - ${PWD}/data/milvus/etcd:/etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - astrbot_network
+
+  milvus-minio:
+    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
+    container_name: milvus-minio
+    restart: always
+    environment:
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+    # ports:
+    #   - "9000:9000"
+    #   - "9001:9001"
+    command: minio server /minio_data --console-address ":9001"
+    volumes:
+      - ${PWD}/data/milvus/minio:/minio_data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - astrbot_network
+
+  milvus-standalone:
+    image: milvusdb/milvus:v2.6.4
+    container_name: milvus-standalone
+    restart: always
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      - ETCD_ENDPOINTS=milvus-etcd:2379
+      - MINIO_ADDRESS=milvus-minio:9000
+      - MQ_TYPE=woodpecker
+    # ports:
+    #   - "19530:19530"
+    #   - "9091:9091"
+    volumes:
+      - ${PWD}/data/milvus/standalone:/var/lib/milvus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      start_period: 90s
+      timeout: 20s
+      retries: 3
+    depends_on:
+      milvus-etcd:
+        condition: service_healthy
+      milvus-minio:
+        condition: service_healthy
     networks:
       - astrbot_network
 

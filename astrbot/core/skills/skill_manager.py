@@ -29,28 +29,6 @@ _SANDBOX_SKILLS_CACHE_VERSION = 1
 _SKILL_NAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
-def _default_sandbox_skill_path(name: str) -> str:
-    return f"{SANDBOX_WORKSPACE_ROOT}/{SANDBOX_SKILLS_ROOT}/{name}/SKILL.md"
-
-
-def _normalize_cached_sandbox_skill_path(name: str, path: str) -> str:
-    normalized = str(path or "").strip().replace("\\", "/")
-    if not normalized:
-        return _default_sandbox_skill_path(name)
-
-    pure_path = PurePosixPath(normalized)
-    if ".." in pure_path.parts:
-        return _default_sandbox_skill_path(name)
-
-    if pure_path.name != "SKILL.md":
-        return _default_sandbox_skill_path(name)
-
-    if pure_path.parent.name != name:
-        return _default_sandbox_skill_path(name)
-
-    return str(pure_path)
-
-
 def _is_ignored_zip_entry(name: str) -> bool:
     parts = PurePosixPath(name).parts
     if not parts:
@@ -158,11 +136,37 @@ def _build_skill_read_command_example(path: str) -> str:
         return f"cat {path}"
     if _is_windows_prompt_path(path):
         command = "type"
-        path_arg = f'"{os.path.normpath(path)}"'
+        path_arg = f'"{path}"'
     else:
         command = "cat"
         path_arg = shlex.quote(path)
     return f"{command} {path_arg}"
+
+
+def _default_sandbox_skill_path(skill_name: str) -> str:
+    return f"{SANDBOX_SKILLS_ROOT}/{skill_name}/SKILL.md"
+
+
+def _build_sandbox_prompt_path(display_name: str, path: str) -> str:
+    normalized = _sanitize_prompt_path_for_prompt(path.replace("\\", "/"))
+    if not normalized:
+        return _default_sandbox_skill_path(display_name)
+
+    default_path = _default_sandbox_skill_path(display_name)
+    if normalized.startswith(f"{SANDBOX_SKILLS_ROOT}/") or normalized.startswith(
+        f"./{SANDBOX_SKILLS_ROOT}/"
+    ):
+        return default_path
+
+    marker = f"/{SANDBOX_SKILLS_ROOT}/"
+    if marker in normalized:
+        prefix = normalized.split(marker, 1)[0].rstrip("/")
+        return f"{prefix}/{default_path}" if prefix else default_path
+
+    if normalized.endswith("/SKILL.md") or normalized.endswith("SKILL.md"):
+        return normalized
+
+    return default_path
 
 
 def build_skills_prompt(skills: list[SkillInfo]) -> str:
@@ -183,15 +187,11 @@ def build_skills_prompt(skills: list[SkillInfo]) -> str:
             if not description:
                 description = "Read SKILL.md for details."
 
+        rendered_path = _sanitize_prompt_path_for_prompt(skill.path)
         if skill.source_type == "sandbox_only":
-            # Prefer the actual path from sandbox cache if available
-            rendered_path = _sanitize_prompt_path_for_prompt(skill.path)
-            if not rendered_path:
-                rendered_path = _default_sandbox_skill_path(skill.name)
-        else:
-            rendered_path = _sanitize_prompt_path_for_prompt(skill.path)
-            if not rendered_path:
-                rendered_path = "<skills_root>/<skill_name>/SKILL.md"
+            rendered_path = _build_sandbox_prompt_path(display_name, rendered_path)
+        elif not rendered_path:
+            rendered_path = "<skills_root>/<skill_name>/SKILL.md"
 
         skills_lines.append(
             f"- **{display_name}**: {description}\n  File: `{rendered_path}`"
@@ -224,8 +224,8 @@ def build_skills_prompt(skills: list[SkillInfo]) -> str:
         "explain why you chose not to.\n"
         "3. **Mandatory grounding** — Before executing any skill you MUST "
         "first read its `SKILL.md` by running a shell command compatible "
-        "with the current runtime shell and using the **absolute path** "
-        f"shown above (e.g. `{example_command}`). "
+        "with the current runtime shell and using the path shown above "
+        f"exactly (e.g. `{example_command}`). "
         "Never rely on memory or assumptions about a skill's content.\n"
         "4. **Progressive disclosure** — Load only what is directly "
         "referenced from `SKILL.md`:\n"
@@ -301,13 +301,13 @@ class SkillManager:
             if not name or not _SKILL_NAME_RE.match(name):
                 continue
             description = str(item.get("description", "") or "")
-            path = _normalize_cached_sandbox_skill_path(
-                name, str(item.get("path", "") or "")
-            )
+            path = str(item.get("path", "") or "")
+            if not path:
+                path = _default_sandbox_skill_path(name)
             deduped[name] = {
                 "name": name,
                 "description": description,
-                "path": path,
+                "path": path.replace("\\", "/"),
             }
         cache = {
             "version": _SANDBOX_SKILLS_CACHE_VERSION,
@@ -351,13 +351,12 @@ class SkillManager:
             if not isinstance(item, dict):
                 continue
             name = str(item.get("name", "") or "").strip()
-            path = _normalize_cached_sandbox_skill_path(
-                name, str(item.get("path", "") or "")
-            )
+            path = str(item.get("path", "") or "").strip().replace("\\", "/")
             if not name or not _SKILL_NAME_RE.match(name):
                 continue
             sandbox_cached_descriptions[name] = str(item.get("description", "") or "")
-            sandbox_cached_paths[name] = path
+            if path:
+                sandbox_cached_paths[name] = path
 
         for entry in sorted(Path(self.skills_root).iterdir()):
             if not entry.is_dir():
@@ -384,9 +383,7 @@ class SkillManager:
             source_type = "both" if sandbox_exists else "local_only"
             source_label = "synced" if sandbox_exists else "local"
             if runtime == "sandbox" and show_sandbox_path:
-                path_str = sandbox_cached_paths.get(
-                    skill_name
-                ) or _default_sandbox_skill_path(skill_name)
+                path_str = _default_sandbox_skill_path(skill_name)
             else:
                 path_str = str(skill_md)
             path_str = path_str.replace("\\", "/")
@@ -420,12 +417,15 @@ class SkillManager:
                 if active_only and not active:
                     continue
                 description = sandbox_cached_descriptions.get(skill_name, "")
-                # For sandbox_only skills, show_sandbox_path is implicitly True
-                # since there is no local path to show. Always prefer the
-                # actual path from sandbox cache.
-                path_str = sandbox_cached_paths.get(
-                    skill_name
-                ) or _default_sandbox_skill_path(skill_name)
+                if show_sandbox_path:
+                    path_str = _build_sandbox_prompt_path(
+                        skill_name,
+                        sandbox_cached_paths.get(skill_name, ""),
+                    )
+                else:
+                    path_str = sandbox_cached_paths.get(skill_name, "")
+                    if not path_str:
+                        path_str = _default_sandbox_skill_path(skill_name)
                 skills_by_name[skill_name] = SkillInfo(
                     name=skill_name,
                     description=description,
