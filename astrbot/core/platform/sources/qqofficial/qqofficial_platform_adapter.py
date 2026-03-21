@@ -85,6 +85,8 @@ class botClient(Client):
         self._commit(abm)
 
     def _commit(self, abm: AstrBotMessage) -> None:
+        if self.platform.should_skip_incoming_message(abm):
+            return
         self.platform.remember_session_message_id(abm.session_id, abm.message_id)
         self.platform.commit_event(
             QQOfficialMessageEvent(
@@ -133,6 +135,8 @@ class QQOfficialPlatformAdapter(Platform):
 
         self._session_last_message_id: dict[str, str] = {}
         self._session_scene: dict[str, str] = {}
+        self._seen_incoming_event_keys: dict[str, float] = {}
+        self._incoming_event_dedup_ttl: int = 60
 
         self.test_mode = os.environ.get("TEST_MODE", "off") == "on"
 
@@ -310,6 +314,43 @@ class QQOfficialPlatformAdapter(Platform):
         if not session_id or not scene:
             return
         self._session_scene[session_id] = scene
+
+    def should_skip_incoming_message(self, abm: AstrBotMessage) -> bool:
+        raw_message = getattr(abm, "raw_message", None)
+        event_id = getattr(raw_message, "event_id", None)
+        message_id = getattr(raw_message, "id", None) or getattr(
+            abm, "message_id", None
+        )
+
+        keys = []
+        if event_id:
+            keys.append(f"event:{event_id}")
+        if message_id:
+            keys.append(f"message:{message_id}")
+        if not keys:
+            return False
+
+        now = time.monotonic()
+        expired = [
+            key
+            for key, ts in self._seen_incoming_event_keys.items()
+            if now - ts > self._incoming_event_dedup_ttl
+        ]
+        for key in expired:
+            del self._seen_incoming_event_keys[key]
+
+        if any(key in self._seen_incoming_event_keys for key in keys):
+            logger.debug(
+                "[QQOfficial] Duplicate incoming message skipped. event_id=%s message_id=%s session_id=%s",
+                event_id,
+                message_id,
+                getattr(abm, "session_id", None),
+            )
+            return True
+
+        for key in keys:
+            self._seen_incoming_event_keys[key] = now
+        return False
 
     def _extract_message_id(self, ret: Any) -> str | None:
         if isinstance(ret, dict):
