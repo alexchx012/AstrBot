@@ -8,6 +8,9 @@ from astrbot.core.agent.run_context import ContextWrapper
 from astrbot.core.agent.tool import ToolExecResult
 from astrbot.core.astr_agent_context import AstrAgentContext
 from astrbot.core.message.components import File
+from astrbot.core.platform.sources.qqofficial.workspace_registry import (
+    resolve_workspace_identity_from_event,
+)
 from astrbot.core.utils.astrbot_path import get_astrbot_temp_path
 
 from ..computer_client import get_booter
@@ -110,9 +113,13 @@ class FileUploadTool(FunctionTool):
     ) -> str | None:
         if permission_error := check_admin_permission(context, "File upload/download"):
             return permission_error
+        workspace_identity = resolve_workspace_identity_from_event(
+            context.context.event
+        )
         sb = await get_booter(
             context.context.context,
             context.context.event.unified_msg_origin,
+            workspace_identity=workspace_identity,
         )
         try:
             # Check if file exists
@@ -175,9 +182,13 @@ class FileDownloadTool(FunctionTool):
     ) -> ToolExecResult:
         if permission_error := check_admin_permission(context, "File upload/download"):
             return permission_error
+        workspace_identity = resolve_workspace_identity_from_event(
+            context.context.event
+        )
         sb = await get_booter(
             context.context.context,
             context.context.event.unified_msg_origin,
+            workspace_identity=workspace_identity,
         )
         try:
             name = os.path.basename(remote_path)

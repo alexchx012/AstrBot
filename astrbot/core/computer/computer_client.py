@@ -454,6 +454,7 @@ async def _sync_skills_to_sandbox(booter: ComputerBooter) -> None:
 async def get_booter(
     context: Context,
     session_id: str,
+    workspace_identity: str | None = None,
 ) -> ComputerBooter:
     config = context.get_config(umo=session_id)
 
@@ -465,24 +466,39 @@ async def get_booter(
 
     sandbox_cfg = config.get("provider_settings", {}).get("sandbox", {})
     booter_type = sandbox_cfg.get("booter", "shipyard_neo")
+    booter_session_key = (
+        workspace_identity
+        if booter_type == "shipyard" and workspace_identity
+        else session_id
+    )
 
-    if session_id in session_booter:
-        booter = session_booter[session_id]
+    if booter_session_key in session_booter:
+        booter = session_booter[booter_session_key]
         if not await booter.available():
             # rebuild
-            session_booter.pop(session_id, None)
-    if session_id not in session_booter:
-        uuid_str = uuid.uuid5(uuid.NAMESPACE_DNS, session_id).hex
+            session_booter.pop(booter_session_key, None)
+    if booter_session_key not in session_booter:
+        shipyard_session_key = uuid.uuid5(uuid.NAMESPACE_DNS, booter_session_key).hex
         logger.info(
-            f"[Computer] Initializing booter: type={booter_type}, session={session_id}"
+            f"[Computer] Initializing booter: type={booter_type}, session={session_id}, workspace={workspace_identity}"
         )
         if booter_type == "shipyard":
+            from astrbot.core.platform.sources.qqofficial.workspace_registry import (
+                QQOfficialWorkspaceRegistry,
+            )
+
             from .booters.shipyard import ShipyardBooter
 
             ep = sandbox_cfg.get("shipyard_endpoint", "")
             token = sandbox_cfg.get("shipyard_access_token", "")
             ttl = sandbox_cfg.get("shipyard_ttl", 3600)
             max_sessions = sandbox_cfg.get("shipyard_max_sessions", 10)
+
+            if workspace_identity:
+                QQOfficialWorkspaceRegistry().refresh_workspace_binding(
+                    workspace_identity,
+                    allow_fallback=True,
+                )
 
             client = ShipyardBooter(
                 endpoint_url=ep, access_token=token, ttl=ttl, session_num=max_sessions
@@ -516,17 +532,17 @@ async def get_booter(
             raise ValueError(f"Unknown booter type: {booter_type}")
 
         try:
-            await client.boot(uuid_str)
+            await client.boot(shipyard_session_key)
             logger.info(
-                f"[Computer] Sandbox booted successfully: type={booter_type}, session={session_id}"
+                f"[Computer] Sandbox booted successfully: type={booter_type}, session={session_id}, workspace={workspace_identity}"
             )
             await _sync_skills_to_sandbox(client)
         except Exception as e:
             logger.error(f"Error booting sandbox for session {session_id}: {e}")
             raise e
 
-        session_booter[session_id] = client
-    return session_booter[session_id]
+        session_booter[booter_session_key] = client
+    return session_booter[booter_session_key]
 
 
 async def sync_skills_to_active_sandboxes() -> None:

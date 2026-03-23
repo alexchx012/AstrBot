@@ -6,6 +6,9 @@ from astrbot.api import FunctionTool
 from astrbot.core.agent.run_context import ContextWrapper
 from astrbot.core.agent.tool import ToolExecResult
 from astrbot.core.astr_agent_context import AstrAgentContext
+from astrbot.core.platform.sources.qqofficial.workspace_registry import (
+    resolve_workspace_identity_from_event,
+)
 
 from ..computer_client import get_booter
 
@@ -24,9 +27,11 @@ def _ensure_admin(context: ContextWrapper[AstrAgentContext]) -> str | None:
 
 
 async def _get_browser_component(context: ContextWrapper[AstrAgentContext]) -> Any:
+    workspace_identity = resolve_workspace_identity_from_event(context.context.event)
     booter = await get_booter(
         context.context.context,
         context.context.event.unified_msg_origin,
+        workspace_identity=workspace_identity,
     )
     browser = getattr(booter, "browser", None)
     if browser is None:

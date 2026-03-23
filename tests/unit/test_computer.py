@@ -5,6 +5,7 @@ filesystem operations, Python execution, shell execution, and security restricti
 """
 
 import sys
+import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -633,7 +634,7 @@ class TestComputerClient:
                     "shipyard_access_token": "test_token",
                     "shipyard_ttl": 3600,
                     "shipyard_max_sessions": 10,
-                }
+                },
             }
         }.get(key, default)
         mock_context.get_config = MagicMock(return_value=mock_config)
@@ -681,7 +682,7 @@ class TestComputerClient:
                 "computer_use_runtime": "sandbox",
                 "sandbox": {
                     "booter": "unknown_type",
-                }
+                },
             }
         }.get(key, default)
         mock_context.get_config = MagicMock(return_value=mock_config)
@@ -707,7 +708,7 @@ class TestComputerClient:
                     "booter": "shipyard",
                     "shipyard_endpoint": "http://localhost:8080",
                     "shipyard_access_token": "test_token",
-                }
+                },
             }
         }.get(key, default)
         mock_context.get_config = MagicMock(return_value=mock_config)
@@ -752,7 +753,7 @@ class TestComputerClient:
                     "booter": "shipyard",
                     "shipyard_endpoint": "http://localhost:8080",
                     "shipyard_access_token": "test_token",
-                }
+                },
             }
         }.get(key, default)
         mock_context.get_config = MagicMock(return_value=mock_config)
@@ -789,6 +790,110 @@ class TestComputerClient:
             assert computer_client.session_booter[session_id] is mock_new_booter
 
         # Cleanup
+        computer_client.session_booter.clear()
+
+    @pytest.mark.asyncio
+    async def test_get_booter_shipyard_uses_workspace_identity_key(self):
+        from astrbot.core.computer import computer_client
+
+        computer_client.session_booter.clear()
+
+        mock_context = MagicMock()
+        mock_config = MagicMock()
+        mock_config.get = lambda key, default=None: {
+            "provider_settings": {
+                "computer_use_runtime": "sandbox",
+                "sandbox": {
+                    "booter": "shipyard",
+                    "shipyard_endpoint": "http://localhost:8080",
+                    "shipyard_access_token": "test_token",
+                    "shipyard_ttl": 3600,
+                    "shipyard_max_sessions": 10,
+                },
+            }
+        }.get(key, default)
+        mock_context.get_config = MagicMock(return_value=mock_config)
+
+        mock_booter = MagicMock()
+        mock_booter.boot = AsyncMock()
+        mock_booter.available = AsyncMock(return_value=True)
+
+        workspace_identity = "v1:123456:user-openid"
+
+        with (
+            patch(
+                "astrbot.core.computer.booters.shipyard.ShipyardBooter",
+                return_value=mock_booter,
+            ) as mock_booter_cls,
+            patch(
+                "astrbot.core.computer.computer_client._sync_skills_to_sandbox",
+                AsyncMock(),
+            ),
+        ):
+            booter = await computer_client.get_booter(
+                mock_context,
+                "qq_official:FriendMessage:old-session",
+                workspace_identity=workspace_identity,
+            )
+
+            mock_booter_cls.assert_called_once()
+            mock_booter.boot.assert_awaited_once_with(
+                uuid.uuid5(uuid.NAMESPACE_DNS, workspace_identity).hex
+            )
+            assert booter is mock_booter
+            assert computer_client.session_booter[workspace_identity] is mock_booter
+
+        computer_client.session_booter.clear()
+
+    @pytest.mark.asyncio
+    async def test_get_booter_reuses_workspace_identity_cache_key(self):
+        from astrbot.core.computer import computer_client
+
+        computer_client.session_booter.clear()
+
+        mock_context = MagicMock()
+        mock_config = MagicMock()
+        mock_config.get = lambda key, default=None: {
+            "provider_settings": {
+                "computer_use_runtime": "sandbox",
+                "sandbox": {
+                    "booter": "shipyard",
+                    "shipyard_endpoint": "http://localhost:8080",
+                    "shipyard_access_token": "test_token",
+                },
+            }
+        }.get(key, default)
+        mock_context.get_config = MagicMock(return_value=mock_config)
+
+        mock_booter = MagicMock()
+        mock_booter.boot = AsyncMock()
+        mock_booter.available = AsyncMock(return_value=True)
+
+        with (
+            patch(
+                "astrbot.core.computer.booters.shipyard.ShipyardBooter",
+                return_value=mock_booter,
+            ) as mock_booter_cls,
+            patch(
+                "astrbot.core.computer.computer_client._sync_skills_to_sandbox",
+                AsyncMock(),
+            ),
+        ):
+            workspace_identity = "v1:123456:user-openid"
+            booter1 = await computer_client.get_booter(
+                mock_context,
+                "umo-one",
+                workspace_identity=workspace_identity,
+            )
+            booter2 = await computer_client.get_booter(
+                mock_context,
+                "umo-two",
+                workspace_identity=workspace_identity,
+            )
+
+            mock_booter_cls.assert_called_once()
+            assert booter1 is booter2
+
         computer_client.session_booter.clear()
 
 

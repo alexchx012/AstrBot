@@ -10,6 +10,9 @@ from astrbot.core.astr_agent_context import AstrAgentContext, AstrMessageEvent
 from astrbot.core.computer.computer_client import get_booter, get_local_booter
 from astrbot.core.computer.tools.permissions import check_admin_permission
 from astrbot.core.message.message_event_result import MessageChain
+from astrbot.core.platform.sources.qqofficial.workspace_registry import (
+    resolve_workspace_identity_from_event,
+)
 
 _OS_NAME = platform.system()
 
@@ -72,9 +75,13 @@ class PythonTool(FunctionTool):
     ) -> ToolExecResult:
         if permission_error := check_admin_permission(context, "Python execution"):
             return permission_error
+        workspace_identity = resolve_workspace_identity_from_event(
+            context.context.event
+        )
         sb = await get_booter(
             context.context.context,
             context.context.event.unified_msg_origin,
+            workspace_identity=workspace_identity,
         )
         try:
             result = await sb.python.exec(code, silent=silent)

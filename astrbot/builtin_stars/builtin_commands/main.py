@@ -10,6 +10,7 @@ from .commands import (
     PersonaCommands,
     PluginCommands,
     ProviderCommands,
+    SetIDCommand,
     SetUnsetCommands,
     SIDCommand,
     T2ICommand,
@@ -29,6 +30,7 @@ class Main(star.Star):
         self.provider_c = ProviderCommands(self.context)
         self.persona_c = PersonaCommands(self.context)
         self.alter_cmd_c = AlterCmdCommands(self.context)
+        self.setid_c = SetIDCommand(self.context)
         self.setunset_c = SetUnsetCommands(self.context)
         self.t2i_c = T2ICommand(self.context)
         self.tts_c = TTSCommand(self.context)
@@ -91,6 +93,11 @@ class Main(star.Star):
     async def sid(self, event: AstrMessageEvent) -> None:
         """获取会话 ID 和 管理员 ID"""
         await self.sid_c.sid(event)
+
+    @filter.command("setid")
+    async def setid(self, event: AstrMessageEvent, alias: str) -> None:
+        """Register a stable qq_official C2C workspace alias."""
+        await self.setid_c.setid(event, alias)
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("op")

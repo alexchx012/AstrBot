@@ -8,6 +8,7 @@ from .llm import LLMCommands
 from .persona import PersonaCommands
 from .plugin import PluginCommands
 from .provider import ProviderCommands
+from .setid import SetIDCommand
 from .setunset import SetUnsetCommands
 from .sid import SIDCommand
 from .t2i import T2ICommand
@@ -23,6 +24,7 @@ __all__ = [
     "PluginCommands",
     "ProviderCommands",
     "SIDCommand",
+    "SetIDCommand",
     "SetUnsetCommands",
     "T2ICommand",
     "TTSCommand",
