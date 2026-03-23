@@ -146,7 +146,6 @@ def test_sync_skills_uses_managed_strategy_instead_of_wiping_all(
             "path": "skills/custom-agent-skill/SKILL.md",
         }
     ]
-
 def test_sync_skills_reads_legacy_shipyard_nested_stdout(monkeypatch, tmp_path: Path):
     skills_root = tmp_path / "skills"
     temp_root = tmp_path / "temp"

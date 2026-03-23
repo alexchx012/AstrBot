@@ -7,6 +7,9 @@ from astrbot.api import FunctionTool
 from astrbot.core.agent.run_context import ContextWrapper
 from astrbot.core.agent.tool import ToolExecResult
 from astrbot.core.astr_agent_context import AstrAgentContext
+from astrbot.core.platform.sources.qqofficial.workspace_registry import (
+    resolve_workspace_identity_from_event,
+)
 from astrbot.core.skills.neo_skill_sync import NeoSkillSyncManager
 
 from ..computer_client import get_booter
@@ -35,9 +38,11 @@ def _ensure_admin(context: ContextWrapper[AstrAgentContext]) -> str | None:
 async def _get_neo_context(
     context: ContextWrapper[AstrAgentContext],
 ) -> tuple[Any, Any]:
+    workspace_identity = resolve_workspace_identity_from_event(context.context.event)
     booter = await get_booter(
         context.context.context,
         context.context.event.unified_msg_origin,
+        workspace_identity=workspace_identity,
     )
     client = getattr(booter, "bay_client", None)
     sandbox = getattr(booter, "sandbox", None)

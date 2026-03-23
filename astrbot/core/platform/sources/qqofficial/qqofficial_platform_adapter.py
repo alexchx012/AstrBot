@@ -27,6 +27,7 @@ from astrbot.core.platform.astr_message_event import MessageSesion
 
 from ...register import register_platform_adapter
 from .qqofficial_message_event import QQOfficialMessageEvent
+from .workspace_registry import QQOfficialWorkspaceRegistry
 
 # remove logger handler
 for handler in logging.root.handlers[:]:
@@ -49,7 +50,7 @@ class botClient(Client):
         abm.group_id = cast(str, message.group_openid)
         abm.session_id = abm.group_id
         self.platform.remember_session_scene(abm.session_id, "group")
-        self._commit(abm)
+        self._commit(abm, message_source="group")
 
     # 收到频道消息
     async def on_at_message_create(self, message: botpy.message.Message) -> None:
@@ -60,7 +61,7 @@ class botClient(Client):
         abm.group_id = message.channel_id
         abm.session_id = abm.group_id
         self.platform.remember_session_scene(abm.session_id, "channel")
-        self._commit(abm)
+        self._commit(abm, message_source="channel")
 
     # 收到私聊消息
     async def on_direct_message_create(
@@ -72,7 +73,7 @@ class botClient(Client):
         )
         abm.session_id = abm.sender.user_id
         self.platform.remember_session_scene(abm.session_id, "friend")
-        self._commit(abm)
+        self._commit(abm, message_source="direct_message")
 
     # 收到 C2C 消息
     async def on_c2c_message_create(self, message: botpy.message.C2CMessage) -> None:
@@ -82,21 +83,25 @@ class botClient(Client):
         )
         abm.session_id = abm.sender.user_id
         self.platform.remember_session_scene(abm.session_id, "friend")
-        self._commit(abm)
+        await self.platform.maybe_prompt_setid_for_c2c(abm)
+        self.platform.maybe_refresh_workspace_binding_for_c2c(abm)
+        self._commit(abm, message_source="c2c")
 
-    def _commit(self, abm: AstrBotMessage) -> None:
+    def _commit(self, abm: AstrBotMessage, message_source: str | None = None) -> None:
         if self.platform.should_skip_incoming_message(abm):
             return
         self.platform.remember_session_message_id(abm.session_id, abm.message_id)
-        self.platform.commit_event(
-            QQOfficialMessageEvent(
-                abm.message_str,
-                abm,
-                self.platform.meta(),
-                abm.session_id,
-                self.platform.client,
-            ),
+        event = QQOfficialMessageEvent(
+            abm.message_str,
+            abm,
+            self.platform.meta(),
+            abm.session_id,
+            self.platform.client,
         )
+        event.set_extra("qq_appid", str(self.platform.appid))
+        if message_source:
+            event.set_extra("qq_message_source", message_source)
+        self.platform.commit_event(event)
 
 
 @register_platform_adapter("qq_official", "QQ 机器人官方 API 适配器")
@@ -137,8 +142,52 @@ class QQOfficialPlatformAdapter(Platform):
         self._session_scene: dict[str, str] = {}
         self._seen_incoming_event_keys: dict[str, float] = {}
         self._incoming_event_dedup_ttl: int = 60
+        self.workspace_registry = QQOfficialWorkspaceRegistry()
 
         self.test_mode = os.environ.get("TEST_MODE", "off") == "on"
+
+    async def maybe_prompt_setid_for_c2c(self, abm: AstrBotMessage) -> bool:
+        sender_id = getattr(getattr(abm, "sender", None), "user_id", "") or ""
+        if not sender_id:
+            return False
+
+        should_prompt = self.workspace_registry.maybe_mark_prompted(
+            appid=str(self.appid),
+            raw_user_id=sender_id,
+        )
+        if not should_prompt:
+            return False
+
+        try:
+            await QQOfficialMessageEvent.post_c2c_message(
+                SimpleNamespace(bot=self.client),  # type: ignore[arg-type]
+                openid=sender_id,
+                content="首次使用该私聊工作区前，请先发送 /setid <3-10位小写字母或数字> 绑定你的专属 ID。",
+                msg_id=abm.message_id,
+                msg_seq=random.randint(1, 10000),
+            )
+            return True
+        except Exception as exc:
+            logger.warning("[QQOfficial] Failed to send /setid prompt: %s", exc)
+            return False
+
+    def maybe_refresh_workspace_binding_for_c2c(self, abm: AstrBotMessage) -> None:
+        sender_id = getattr(getattr(abm, "sender", None), "user_id", "") or ""
+        appid = str(self.appid)
+        if not sender_id or not appid.isdigit():
+            return
+        workspace_identity = f"v1:{appid}:{sender_id}"
+        try:
+            self.workspace_registry.refresh_workspace_binding(
+                workspace_identity,
+                allow_fallback=False,
+            )
+        except Exception as exc:
+            logger.warning(
+                "[QQOfficial] Failed to refresh workspace binding for %s: %s",
+                workspace_identity,
+                exc,
+            )
 
     async def send_by_session(
         self,

@@ -36,6 +36,9 @@ from astrbot.core.computer.tools import (
 from astrbot.core.knowledge_base.kb_helper import KBHelper
 from astrbot.core.message.message_event_result import MessageChain
 from astrbot.core.platform.message_session import MessageSession
+from astrbot.core.platform.sources.qqofficial.workspace_registry import (
+    resolve_workspace_identity_from_event,
+)
 from astrbot.core.star.context import Context
 from astrbot.core.utils.astrbot_path import get_astrbot_temp_path
 
@@ -252,9 +255,13 @@ class SendMessageToUserTool(FunctionTool[AstrAgentContext]):
 
         # Try to check if the file exists in the sandbox
         try:
+            workspace_identity = resolve_workspace_identity_from_event(
+                context.context.event
+            )
             sb = await get_booter(
                 context.context.context,
                 context.context.event.unified_msg_origin,
+                workspace_identity=workspace_identity,
             )
             # Use shell to check if the file exists in sandbox
             result = await sb.shell.exec(f"test -f {path} && echo '_&exists_'")

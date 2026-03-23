@@ -38,7 +38,8 @@ class _FakeBooter:
 
 
 def test_promote_stable_sync_failure_auto_rolls_back(monkeypatch):
-    async def _fake_get_booter(_ctx, _session_id):
+    async def _fake_get_booter(_ctx, _session_id, workspace_identity=None):
+        _ = workspace_identity
         return _FakeBooter()
 
     async def _fake_sync_release(self, client, **kwargs):
