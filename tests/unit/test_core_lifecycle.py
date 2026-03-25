@@ -403,6 +403,120 @@ class TestAstrBotCoreLifecycleInitialize:
         assert lifecycle.pipeline_scheduler_mapping is not None
 
     @pytest.mark.asyncio
+    async def test_initialize_uses_lifecycle_bound_shared_preferences(
+        self, mock_log_broker, mock_db, mock_astrbot_config
+    ):
+        lifecycle = AstrBotCoreLifecycle(mock_log_broker, mock_db)
+
+        mock_db.initialize = AsyncMock()
+        mock_html_renderer = MagicMock()
+        mock_html_renderer.initialize = AsyncMock()
+
+        mock_umop_config_router = MagicMock()
+        mock_umop_config_router.initialize = AsyncMock()
+
+        mock_astrbot_config_mgr = MagicMock()
+        mock_astrbot_config_mgr.default_conf = {}
+        mock_astrbot_config_mgr.confs = {}
+
+        mock_persona_mgr = MagicMock()
+        mock_persona_mgr.initialize = AsyncMock()
+
+        mock_provider_manager = MagicMock()
+        mock_provider_manager.initialize = AsyncMock()
+
+        mock_platform_manager = MagicMock()
+        mock_platform_manager.initialize = AsyncMock()
+
+        mock_conversation_manager = MagicMock()
+        mock_platform_message_history_manager = MagicMock()
+
+        mock_kb_manager = MagicMock()
+        mock_kb_manager.initialize = AsyncMock()
+
+        mock_cron_manager = MagicMock()
+        mock_star_context = MagicMock()
+        mock_star_context._register_tasks = []
+        mock_plugin_manager = MagicMock()
+        mock_plugin_manager.reload = AsyncMock()
+        mock_pipeline_scheduler = MagicMock()
+        mock_pipeline_scheduler.initialize = AsyncMock()
+        mock_astrbot_updator = MagicMock()
+        mock_event_bus = MagicMock()
+        global_sp = object()
+
+        with (
+            patch("astrbot.core.core_lifecycle.astrbot_config", mock_astrbot_config),
+            patch("astrbot.core.core_lifecycle.html_renderer", mock_html_renderer),
+            patch(
+                "astrbot.core.core_lifecycle.UmopConfigRouter",
+                return_value=mock_umop_config_router,
+            ) as umop_router_cls,
+            patch(
+                "astrbot.core.core_lifecycle.AstrBotConfigManager",
+                return_value=mock_astrbot_config_mgr,
+            ) as config_mgr_cls,
+            patch(
+                "astrbot.core.core_lifecycle.PersonaManager",
+                return_value=mock_persona_mgr,
+            ),
+            patch(
+                "astrbot.core.core_lifecycle.ProviderManager",
+                return_value=mock_provider_manager,
+            ),
+            patch(
+                "astrbot.core.core_lifecycle.PlatformManager",
+                return_value=mock_platform_manager,
+            ),
+            patch(
+                "astrbot.core.core_lifecycle.ConversationManager",
+                return_value=mock_conversation_manager,
+            ),
+            patch(
+                "astrbot.core.core_lifecycle.PlatformMessageHistoryManager",
+                return_value=mock_platform_message_history_manager,
+            ),
+            patch(
+                "astrbot.core.core_lifecycle.KnowledgeBaseManager",
+                return_value=mock_kb_manager,
+            ),
+            patch(
+                "astrbot.core.core_lifecycle.CronJobManager",
+                return_value=mock_cron_manager,
+            ),
+            patch(
+                "astrbot.core.core_lifecycle.Context", return_value=mock_star_context
+            ),
+            patch(
+                "astrbot.core.core_lifecycle.PluginManager",
+                return_value=mock_plugin_manager,
+            ),
+            patch(
+                "astrbot.core.core_lifecycle.PipelineScheduler",
+                return_value=mock_pipeline_scheduler,
+            ),
+            patch(
+                "astrbot.core.core_lifecycle.AstrBotUpdator",
+                return_value=mock_astrbot_updator,
+            ),
+            patch("astrbot.core.core_lifecycle.EventBus", return_value=mock_event_bus),
+            patch("astrbot.core.core_lifecycle.migra", new_callable=AsyncMock),
+            patch(
+                "astrbot.core.core_lifecycle.update_llm_metadata",
+                new_callable=AsyncMock,
+            ),
+            patch("astrbot.core.core_lifecycle.sp", global_sp),
+        ):
+            await lifecycle.initialize()
+
+        router_sp = umop_router_cls.call_args.kwargs["sp"]
+        config_sp = config_mgr_cls.call_args.kwargs["sp"]
+
+        assert router_sp is not global_sp
+        assert config_sp is not global_sp
+        assert config_sp is router_sp
+
+    @pytest.mark.asyncio
     async def test_initialize_handles_migration_failure(
         self, mock_log_broker, mock_db, mock_astrbot_config
     ):

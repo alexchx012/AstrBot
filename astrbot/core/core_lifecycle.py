@@ -37,6 +37,7 @@ from astrbot.core.umop_config_router import UmopConfigRouter
 from astrbot.core.updator import AstrBotUpdator
 from astrbot.core.utils.llm_metadata import update_llm_metadata
 from astrbot.core.utils.migra_helper import migra
+from astrbot.core.utils.shared_preferences import SharedPreferences
 from astrbot.core.utils.temp_dir_cleaner import TempDirCleaner
 
 from . import astrbot_config, html_renderer
@@ -117,15 +118,18 @@ class AstrBotCoreLifecycle:
 
         await html_renderer.initialize()
 
+        # Keep lifecycle-owned routing/config state on the same database instance.
+        self.shared_preferences = SharedPreferences(db_helper=self.db)
+
         # 初始化 UMOP 配置路由器
-        self.umop_config_router = UmopConfigRouter(sp=sp)
+        self.umop_config_router = UmopConfigRouter(sp=self.shared_preferences)
         await self.umop_config_router.initialize()
 
         # 初始化 AstrBot 配置管理器
         self.astrbot_config_mgr = AstrBotConfigManager(
             default_config=self.astrbot_config,
             ucr=self.umop_config_router,
-            sp=sp,
+            sp=self.shared_preferences,
         )
         self.temp_dir_cleaner = TempDirCleaner(
             max_size_getter=lambda: self.astrbot_config_mgr.default_conf.get(
