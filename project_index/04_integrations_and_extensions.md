@@ -29,7 +29,8 @@
 - `[Fact]` `SkillManager` 默认把技能目录放在运行时 `data/skills` 下，并维护 `data/skills.json` 和沙箱技能缓存文件。Evidence: `astrbot/core/skills/skill_manager.py:16-27`, `astrbot/core/skills/skill_manager.py:225-270`
 - `[Fact]` `SkillManager` 现在会把技能目录里的旧 `skill.md` 原地规范化重命名为 `SKILL.md`，并统一按 `SKILL.md` 作为技能入口文件识别。Evidence: `astrbot/core/skills/skill_manager.py:40-59`, `astrbot/core/skills/skill_manager.py:389-389`, `astrbot/core/skills/skill_manager.py:472-472`, `astrbot/core/skills/skill_manager.py:586-586`
 - `[Fact]` Skill 条目由技能目录里的技能说明文件驱动，并能解析 frontmatter 描述。Evidence: `astrbot/core/skills/skill_manager.py:51-87`, `astrbot/core/skills/skill_manager.py:339-360`
-- `[Fact]` 控制面板支持从 ZIP 上传单个或多个 skills，并在成功后尝试同步到活跃 sandbox。Evidence: `astrbot/dashboard/routes/skills.py:147-191`, `astrbot/dashboard/routes/skills.py:193-260`
+- `[Fact]` 技能 ZIP 安装现在同时支持两种归档结构：根目录直接包含 `SKILL.md`，或 ZIP 里只有一个顶层技能目录；安装时还会对技能名做归一化并校验，支持中文技能名，同时拒绝多顶层目录、绝对路径和 `..` 路径。Evidence: `astrbot/core/skills/skill_manager.py:538-649`
+- `[Fact]` 控制面板支持从 ZIP 上传单个或多个 skills，并在成功后尝试同步到活跃 sandbox；批量上传还会把重复技能归类为 `skipped`，而不是一律算失败。Evidence: `astrbot/dashboard/routes/skills.py:147-191`, `astrbot/dashboard/routes/skills.py:193-367`
 - `[Fact]` Skills 路由还内建了面向 Shipyard Neo 的候选版本、发布、回滚、同步能力。Evidence: `astrbot/dashboard/routes/skills.py:47-121`
 
 ## SubAgent、Tools 与 MCP
