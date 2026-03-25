@@ -4,6 +4,7 @@ This module tests the ComputerClient, Booter implementations (local, shipyard, b
 filesystem operations, Python execution, shell execution, and security restrictions.
 """
 
+import asyncio
 import sys
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -793,10 +794,13 @@ class TestComputerClient:
         computer_client.session_booter.clear()
 
     @pytest.mark.asyncio
-    async def test_get_booter_shipyard_uses_workspace_identity_key(self):
+    async def test_get_booter_shipyard_uses_workspace_identity_key(
+        self, monkeypatch, tmp_path
+    ):
         from astrbot.core.computer import computer_client
 
         computer_client.session_booter.clear()
+        monkeypatch.setenv("ASTRBOT_ROOT", str(tmp_path))
 
         mock_context = MagicMock()
         mock_config = MagicMock()
@@ -846,10 +850,13 @@ class TestComputerClient:
         computer_client.session_booter.clear()
 
     @pytest.mark.asyncio
-    async def test_get_booter_reuses_workspace_identity_cache_key(self):
+    async def test_get_booter_reuses_workspace_identity_cache_key(
+        self, monkeypatch, tmp_path
+    ):
         from astrbot.core.computer import computer_client
 
         computer_client.session_booter.clear()
+        monkeypatch.setenv("ASTRBOT_ROOT", str(tmp_path))
 
         mock_context = MagicMock()
         mock_config = MagicMock()
@@ -893,6 +900,304 @@ class TestComputerClient:
 
             mock_booter_cls.assert_called_once()
             assert booter1 is booter2
+
+        computer_client.session_booter.clear()
+
+    @pytest.mark.asyncio
+    async def test_get_booter_shipyard_resolves_workspace_binding_after_boot(
+        self, monkeypatch, tmp_path
+    ):
+        import json
+        import sqlite3
+
+        from astrbot.core.computer import computer_client
+        from astrbot.core.platform.sources.qqofficial.workspace_registry import (
+            QQOfficialWorkspaceRegistry,
+        )
+
+        computer_client.session_booter.clear()
+        monkeypatch.setenv("ASTRBOT_ROOT", str(tmp_path))
+
+        registry = QQOfficialWorkspaceRegistry()
+        registration = registry.register_alias(
+            appid="123456",
+            raw_user_id="user-openid",
+            alias="abc123",
+        )
+        assert registration.workspace_ready is False
+
+        mock_context = MagicMock()
+        mock_config = MagicMock()
+        mock_config.get = lambda key, default=None: {
+            "provider_settings": {
+                "computer_use_runtime": "sandbox",
+                "sandbox": {
+                    "booter": "shipyard",
+                    "shipyard_endpoint": "http://localhost:8080",
+                    "shipyard_access_token": "test_token",
+                    "shipyard_ttl": 3600,
+                    "shipyard_max_sessions": 10,
+                },
+            }
+        }.get(key, default)
+        mock_context.get_config = MagicMock(return_value=mock_config)
+
+        workspace_identity = "v1:123456:user-openid"
+        shipyard_session_key = uuid.uuid5(uuid.NAMESPACE_DNS, workspace_identity).hex
+        ship_id = "ship-boot-001"
+        workspace_dir = (
+            tmp_path
+            / "data"
+            / "shipyard"
+            / "ship_mnt_data"
+            / ship_id
+            / "home"
+            / "ship_user_1"
+            / "workspace"
+        )
+        metadata_dir = workspace_dir.parents[2] / "metadata"
+        bay_db = tmp_path / "data" / "shipyard" / "bay_data" / "bay.db"
+
+        async def _boot(session_key: str):
+            assert session_key == shipyard_session_key
+
+            workspace_dir.mkdir(parents=True, exist_ok=True)
+            metadata_dir.mkdir(parents=True, exist_ok=True)
+            (metadata_dir / "session_users.json").write_text(
+                json.dumps({shipyard_session_key: "ship_user_1"}),
+                encoding="utf-8",
+            )
+            (metadata_dir / "users_info.json").write_text(
+                json.dumps({"ship_user_1": {"home": "/home/ship_user_1"}}),
+                encoding="utf-8",
+            )
+
+            bay_db.parent.mkdir(parents=True, exist_ok=True)
+            conn = sqlite3.connect(bay_db)
+            cur = conn.cursor()
+            cur.executescript(
+                """
+                CREATE TABLE ships (
+                    id TEXT PRIMARY KEY,
+                    status INTEGER NOT NULL,
+                    created_at TEXT,
+                    updated_at TEXT,
+                    container_id TEXT,
+                    ip_address TEXT,
+                    ttl INTEGER NOT NULL,
+                    max_session_num INTEGER NOT NULL,
+                    current_session_num INTEGER NOT NULL,
+                    expires_at TEXT
+                );
+                CREATE TABLE session_ships (
+                    id TEXT PRIMARY KEY,
+                    session_id TEXT NOT NULL,
+                    ship_id TEXT NOT NULL,
+                    created_at TEXT,
+                    last_activity TEXT,
+                    expires_at TEXT,
+                    initial_ttl INTEGER NOT NULL
+                );
+                """
+            )
+            cur.execute(
+                """
+                INSERT INTO ships (id, status, created_at, updated_at, container_id, ip_address, ttl, max_session_num, current_session_num, expires_at)
+                VALUES (?, 1, '2026-03-24T00:00:00+00:00', '2026-03-24T00:01:00+00:00', 'container-1', '172.18.0.10', 3600, 10, 1, '2026-03-24T01:01:00+00:00')
+                """,
+                (ship_id,),
+            )
+            cur.execute(
+                """
+                INSERT INTO session_ships (id, session_id, ship_id, created_at, last_activity, expires_at, initial_ttl)
+                VALUES ('session-link-1', ?, ?, '2026-03-24T00:00:00+00:00', '2026-03-24T00:01:00+00:00', '2026-03-24T01:01:00+00:00', 3600)
+                """,
+                (shipyard_session_key, ship_id),
+            )
+            conn.commit()
+            conn.close()
+
+        mock_booter = MagicMock()
+        mock_booter.boot = AsyncMock(side_effect=_boot)
+        mock_booter.available = AsyncMock(return_value=True)
+
+        with (
+            patch(
+                "astrbot.core.computer.booters.shipyard.ShipyardBooter",
+                return_value=mock_booter,
+            ),
+            patch(
+                "astrbot.core.computer.computer_client._sync_skills_to_sandbox",
+                AsyncMock(),
+            ),
+        ):
+            booter = await computer_client.get_booter(
+                mock_context,
+                "qq_official:FriendMessage:old-session",
+                workspace_identity=workspace_identity,
+            )
+
+        alias_dir = tmp_path / "data" / "qq_workspaces" / "123456" / "abc123"
+        workspace_link = alias_dir / "workspace"
+        manifest = json.loads(
+            (tmp_path / "data" / "qq_workspaces" / "manifest.json").read_text(
+                encoding="utf-8"
+            )
+        )
+
+        assert booter is mock_booter
+        assert workspace_link.is_symlink()
+        assert workspace_link.resolve() == workspace_dir.resolve()
+        assert manifest["workspaces"][workspace_identity]["status"] == "resolved"
+        assert (
+            manifest["workspaces"][workspace_identity]["reason"] == "resolved_current"
+        )
+
+        computer_client.session_booter.clear()
+
+    @pytest.mark.asyncio
+    async def test_get_booter_shipyard_resolves_workspace_binding_after_skill_sync(
+        self, monkeypatch, tmp_path
+    ):
+        import json
+        import sqlite3
+
+        from astrbot.core.computer import computer_client
+        from astrbot.core.platform.sources.qqofficial.workspace_registry import (
+            QQOfficialWorkspaceRegistry,
+        )
+
+        computer_client.session_booter.clear()
+        monkeypatch.setenv("ASTRBOT_ROOT", str(tmp_path))
+
+        registry = QQOfficialWorkspaceRegistry()
+        registry.register_alias(
+            appid="123456",
+            raw_user_id="user-openid",
+            alias="abc123",
+        )
+
+        mock_context = MagicMock()
+        mock_config = MagicMock()
+        mock_config.get = lambda key, default=None: {
+            "provider_settings": {
+                "computer_use_runtime": "sandbox",
+                "sandbox": {
+                    "booter": "shipyard",
+                    "shipyard_endpoint": "http://localhost:8080",
+                    "shipyard_access_token": "test_token",
+                    "shipyard_ttl": 3600,
+                    "shipyard_max_sessions": 10,
+                },
+            }
+        }.get(key, default)
+        mock_context.get_config = MagicMock(return_value=mock_config)
+
+        workspace_identity = "v1:123456:user-openid"
+        shipyard_session_key = uuid.uuid5(uuid.NAMESPACE_DNS, workspace_identity).hex
+        ship_id = "ship-sync-001"
+        ship_root = tmp_path / "data" / "shipyard" / "ship_mnt_data" / ship_id / "home"
+        workspace_dir = ship_root / "ship_user_1" / "workspace"
+        metadata_dir = ship_root.parent / "metadata"
+        bay_db = tmp_path / "data" / "shipyard" / "bay_data" / "bay.db"
+
+        async def _boot(session_key: str):
+            assert session_key == shipyard_session_key
+
+            metadata_dir.mkdir(parents=True, exist_ok=True)
+            (metadata_dir / "session_users.json").write_text(
+                json.dumps({shipyard_session_key: "ship_user_1"}),
+                encoding="utf-8",
+            )
+            (metadata_dir / "users_info.json").write_text(
+                json.dumps({"ship_user_1": {"home": "/home/ship_user_1"}}),
+                encoding="utf-8",
+            )
+
+            bay_db.parent.mkdir(parents=True, exist_ok=True)
+            conn = sqlite3.connect(bay_db)
+            cur = conn.cursor()
+            cur.executescript(
+                """
+                CREATE TABLE ships (
+                    id TEXT PRIMARY KEY,
+                    status INTEGER NOT NULL,
+                    created_at TEXT,
+                    updated_at TEXT,
+                    container_id TEXT,
+                    ip_address TEXT,
+                    ttl INTEGER NOT NULL,
+                    max_session_num INTEGER NOT NULL,
+                    current_session_num INTEGER NOT NULL,
+                    expires_at TEXT
+                );
+                CREATE TABLE session_ships (
+                    id TEXT PRIMARY KEY,
+                    session_id TEXT NOT NULL,
+                    ship_id TEXT NOT NULL,
+                    created_at TEXT,
+                    last_activity TEXT,
+                    expires_at TEXT,
+                    initial_ttl INTEGER NOT NULL
+                );
+                """
+            )
+            cur.execute(
+                """
+                INSERT INTO ships (id, status, created_at, updated_at, container_id, ip_address, ttl, max_session_num, current_session_num, expires_at)
+                VALUES (?, 1, '2026-03-24T00:00:00+00:00', '2026-03-24T00:01:00+00:00', 'container-1', '172.18.0.10', 3600, 10, 1, '2026-03-24T01:01:00+00:00')
+                """,
+                (ship_id,),
+            )
+            cur.execute(
+                """
+                INSERT INTO session_ships (id, session_id, ship_id, created_at, last_activity, expires_at, initial_ttl)
+                VALUES ('session-link-1', ?, ?, '2026-03-24T00:00:00+00:00', '2026-03-24T00:01:00+00:00', '2026-03-24T01:01:00+00:00', 3600)
+                """,
+                (shipyard_session_key, ship_id),
+            )
+            conn.commit()
+            conn.close()
+
+        async def _sync_skills(_booter):
+            workspace_dir.mkdir(parents=True, exist_ok=True)
+            (workspace_dir / "skills").mkdir(parents=True, exist_ok=True)
+            await asyncio.sleep(0)
+
+        mock_booter = MagicMock()
+        mock_booter.boot = AsyncMock(side_effect=_boot)
+        mock_booter.available = AsyncMock(return_value=True)
+
+        with (
+            patch(
+                "astrbot.core.computer.booters.shipyard.ShipyardBooter",
+                return_value=mock_booter,
+            ),
+            patch(
+                "astrbot.core.computer.computer_client._sync_skills_to_sandbox",
+                AsyncMock(side_effect=_sync_skills),
+            ),
+        ):
+            await computer_client.get_booter(
+                mock_context,
+                "qq_official:FriendMessage:old-session",
+                workspace_identity=workspace_identity,
+            )
+
+        alias_dir = tmp_path / "data" / "qq_workspaces" / "123456" / "abc123"
+        workspace_link = alias_dir / "workspace"
+        manifest = json.loads(
+            (tmp_path / "data" / "qq_workspaces" / "manifest.json").read_text(
+                encoding="utf-8"
+            )
+        )
+
+        assert workspace_link.is_symlink()
+        assert workspace_link.resolve() == workspace_dir.resolve()
+        assert manifest["workspaces"][workspace_identity]["status"] == "resolved"
+        assert (
+            manifest["workspaces"][workspace_identity]["reason"] == "resolved_current"
+        )
 
         computer_client.session_booter.clear()
 

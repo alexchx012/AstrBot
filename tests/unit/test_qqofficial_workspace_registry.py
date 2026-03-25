@@ -1,5 +1,7 @@
 import json
+import os
 import sqlite3
+import stat
 import uuid
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -260,6 +262,75 @@ def test_refresh_workspace_binding_resolves_from_bay_db(monkeypatch, tmp_path: P
     )
     assert manifest["workspaces"][workspace_identity]["status"] == "resolved"
     assert manifest["workspaces"][workspace_identity]["reason"] == "resolved_current"
+
+
+def test_refresh_workspace_binding_normalizes_workspace_permissions(
+    monkeypatch, tmp_path: Path
+):
+    monkeypatch.setenv("ASTRBOT_ROOT", str(tmp_path))
+    registry = QQOfficialWorkspaceRegistry()
+    registry.register_alias(
+        appid="123456",
+        raw_user_id="user-openid",
+        alias="abc123",
+    )
+
+    workspace_identity = "v1:123456:user-openid"
+    session_id = uuid.uuid5(uuid.NAMESPACE_DNS, workspace_identity).hex
+    ship_id = "ship-001"
+    workspace_dir = _create_ship_workspace(tmp_path, ship_id, session_id, "ship_user_1")
+    nested_file = workspace_dir / "created-by-sandbox.txt"
+    nested_file.write_text("hello\n", encoding="utf-8")
+    os.chmod(workspace_dir, 0o755)
+    os.chmod(nested_file, 0o644)
+    _create_bay_db(tmp_path, session_id, ship_id)
+
+    registry.refresh_workspace_binding(
+        workspace_identity,
+        allow_fallback=True,
+    )
+
+    workspace_mode = stat.S_IMODE(workspace_dir.stat().st_mode)
+    nested_file_mode = stat.S_IMODE(nested_file.stat().st_mode)
+
+    assert workspace_mode & stat.S_IWGRP
+    assert workspace_mode & stat.S_IXGRP
+    assert workspace_mode & stat.S_ISGID
+    assert nested_file_mode & stat.S_IWGRP
+
+
+def test_refresh_workspace_binding_normalizes_workspace_permissions_for_other_users(
+    monkeypatch, tmp_path: Path
+):
+    monkeypatch.setenv("ASTRBOT_ROOT", str(tmp_path))
+    registry = QQOfficialWorkspaceRegistry()
+    registry.register_alias(
+        appid="123456",
+        raw_user_id="user-openid",
+        alias="abc123",
+    )
+
+    workspace_identity = "v1:123456:user-openid"
+    session_id = uuid.uuid5(uuid.NAMESPACE_DNS, workspace_identity).hex
+    ship_id = "ship-001"
+    workspace_dir = _create_ship_workspace(tmp_path, ship_id, session_id, "ship_user_1")
+    nested_file = workspace_dir / "created-by-sandbox.txt"
+    nested_file.write_text("hello\n", encoding="utf-8")
+    os.chmod(workspace_dir, 0o755)
+    os.chmod(nested_file, 0o644)
+    _create_bay_db(tmp_path, session_id, ship_id)
+
+    registry.refresh_workspace_binding(
+        workspace_identity,
+        allow_fallback=True,
+    )
+
+    workspace_mode = stat.S_IMODE(workspace_dir.stat().st_mode)
+    nested_file_mode = stat.S_IMODE(nested_file.stat().st_mode)
+
+    assert workspace_mode & stat.S_IWOTH
+    assert workspace_mode & stat.S_IXOTH
+    assert nested_file_mode & stat.S_IWOTH
 
 
 def test_refresh_workspace_binding_uses_unique_fallback_when_bay_unavailable(

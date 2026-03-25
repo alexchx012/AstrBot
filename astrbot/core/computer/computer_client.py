@@ -291,14 +291,6 @@ print(
     return _build_python_exec_command(script)
 
 
-def _build_sync_and_scan_command() -> str:
-    """Legacy combined command kept for backward compatibility.
-
-    New code paths should prefer apply + scan split helpers.
-    """
-    return f"{_build_apply_sync_command()}\n{_build_scan_command()}"
-
-
 def _extract_exec_field(result: dict, key: str):
     value = result.get(key)
     if value not in (None, ""):
@@ -493,9 +485,12 @@ async def get_booter(
             token = sandbox_cfg.get("shipyard_access_token", "")
             ttl = sandbox_cfg.get("shipyard_ttl", 3600)
             max_sessions = sandbox_cfg.get("shipyard_max_sessions", 10)
+            workspace_registry = (
+                QQOfficialWorkspaceRegistry() if workspace_identity else None
+            )
 
-            if workspace_identity:
-                QQOfficialWorkspaceRegistry().refresh_workspace_binding(
+            if workspace_registry is not None:
+                workspace_registry.refresh_workspace_binding(
                     workspace_identity,
                     allow_fallback=True,
                 )
@@ -533,10 +528,20 @@ async def get_booter(
 
         try:
             await client.boot(shipyard_session_key)
+            if booter_type == "shipyard" and workspace_identity:
+                workspace_registry.refresh_workspace_binding(
+                    workspace_identity,
+                    allow_fallback=True,
+                )
+            await _sync_skills_to_sandbox(client)
+            if booter_type == "shipyard" and workspace_identity:
+                workspace_registry.refresh_workspace_binding(
+                    workspace_identity,
+                    allow_fallback=True,
+                )
             logger.info(
                 f"[Computer] Sandbox booted successfully: type={booter_type}, session={session_id}, workspace={workspace_identity}"
             )
-            await _sync_skills_to_sandbox(client)
         except Exception as e:
             logger.error(f"Error booting sandbox for session {session_id}: {e}")
             raise e

@@ -16,69 +16,6 @@ from astrbot.core.utils.astrbot_path import get_astrbot_temp_path
 from ..computer_client import get_booter
 from .permissions import check_admin_permission
 
-# @dataclass
-# class CreateFileTool(FunctionTool):
-#     name: str = "astrbot_create_file"
-#     description: str = "Create a new file in the sandbox."
-#     parameters: dict = field(
-#         default_factory=lambda: {
-#             "type": "object",
-#             "properties": {
-#                 "path": {
-#                     "path": "string",
-#                     "description": "The path where the file should be created, relative to the sandbox root. Must not use absolute paths or traverse outside the sandbox.",
-#                 },
-#                 "content": {
-#                     "type": "string",
-#                     "description": "The content to write into the file.",
-#                 },
-#             },
-#             "required": ["path", "content"],
-#         }
-#     )
-
-#     async def call(
-#         self, context: ContextWrapper[AstrAgentContext], path: str, content: str
-#     ) -> ToolExecResult:
-#         sb = await get_booter(
-#             context.context.context,
-#             context.context.event.unified_msg_origin,
-#         )
-#         try:
-#             result = await sb.fs.create_file(path, content)
-#             return json.dumps(result)
-#         except Exception as e:
-#             return f"Error creating file: {str(e)}"
-
-
-# @dataclass
-# class ReadFileTool(FunctionTool):
-#     name: str = "astrbot_read_file"
-#     description: str = "Read the content of a file in the sandbox."
-#     parameters: dict = field(
-#         default_factory=lambda: {
-#             "type": "object",
-#             "properties": {
-#                 "path": {
-#                     "type": "string",
-#                     "description": "The path of the file to read, relative to the sandbox root. Must not use absolute paths or traverse outside the sandbox.",
-#                 },
-#             },
-#             "required": ["path"],
-#         }
-#     )
-
-#     async def call(self, context: ContextWrapper[AstrAgentContext], path: str):
-#         sb = await get_booter(
-#             context.context.context,
-#             context.context.event.unified_msg_origin,
-#         )
-#         try:
-#             result = await sb.fs.read_file(path)
-#             return result
-#         except Exception as e:
-#             return f"Error reading file: {str(e)}"
-
 
 @dataclass
 class FileUploadTool(FunctionTool):
@@ -97,10 +34,6 @@ class FileUploadTool(FunctionTool):
                     "type": "string",
                     "description": "Absolute path to the file on the host filesystem that will be copied into the sandbox.",
                 },
-                # "remote_path": {
-                #     "type": "string",
-                #     "description": "The filename to use in the sandbox. If not provided, file will be saved to the working directory with the same name as the local file.",
-                # },
             },
             "required": ["local_path"],
         }

@@ -4,6 +4,7 @@ import json
 import os
 import re
 import sqlite3
+import stat
 import threading
 import uuid
 from dataclasses import dataclass
@@ -413,6 +414,50 @@ class QQOfficialWorkspaceRegistry:
         relative_target = os.path.relpath(target_path, link_path.parent)
         link_path.symlink_to(relative_target)
 
+    def _group_shared_mode(self, mode: int, *, is_dir: bool) -> int:
+        shared_mode = mode
+        if mode & stat.S_IRUSR:
+            shared_mode |= stat.S_IRGRP
+            shared_mode |= stat.S_IROTH
+        if mode & stat.S_IWUSR:
+            shared_mode |= stat.S_IWGRP
+            shared_mode |= stat.S_IWOTH
+        if mode & stat.S_IXUSR:
+            shared_mode |= stat.S_IXGRP
+            shared_mode |= stat.S_IXOTH
+        if is_dir:
+            shared_mode |= stat.S_IRGRP | stat.S_IWGRP | stat.S_IXGRP | stat.S_ISGID
+        return shared_mode
+
+    def _normalize_mode(self, path: Path, *, is_dir: bool) -> None:
+        try:
+            current_mode = stat.S_IMODE(path.stat().st_mode)
+            target_mode = self._group_shared_mode(current_mode, is_dir=is_dir)
+            if current_mode != target_mode:
+                path.chmod(target_mode)
+        except OSError:
+            return
+
+    def _normalize_workspace_permissions(self, workspace_path: Path) -> None:
+        if not workspace_path.is_dir():
+            return
+
+        for root, dirnames, filenames in os.walk(workspace_path):
+            root_path = Path(root)
+            self._normalize_mode(root_path, is_dir=True)
+
+            for dirname in dirnames:
+                dir_path = root_path / dirname
+                if dir_path.is_symlink():
+                    continue
+                self._normalize_mode(dir_path, is_dir=True)
+
+            for filename in filenames:
+                file_path = root_path / filename
+                if file_path.is_symlink():
+                    continue
+                self._normalize_mode(file_path, is_dir=False)
+
     def _sync_workspace_links(
         self,
         *,
@@ -496,6 +541,7 @@ class QQOfficialWorkspaceRegistry:
                 )
 
                 if result.status == "resolved" and result.workspace_path is not None:
+                    self._normalize_workspace_permissions(result.workspace_path)
                     workspace_entry["ship_id"] = result.ship_id
                     workspace_entry["ship_mnt_data_relpath"] = (
                         result.ship_mnt_data_relpath
@@ -569,6 +615,36 @@ class QQOfficialWorkspaceRegistry:
                 return False
 
             manifest["alias_states"][workspace_identity] = "prompted"
+            return True
+
+        return self._with_manifest_lock(_update)
+
+    def get_alias_state(self, *, appid: str, raw_user_id: str) -> str | None:
+        appid = self._ensure_numeric_appid(appid)
+        raw_user_id = raw_user_id.strip()
+        workspace_identity = _build_workspace_identity(appid, raw_user_id)
+        manifest = self._read_manifest_unlocked()
+        state = manifest["alias_states"].get(workspace_identity)
+        if not isinstance(state, str) or not state:
+            return None
+        return state
+
+    def clear_prompted_state(self, *, appid: str, raw_user_id: str) -> bool:
+        appid = self._ensure_numeric_appid(appid)
+        raw_user_id = raw_user_id.strip()
+        workspace_identity = _build_workspace_identity(appid, raw_user_id)
+
+        def _update(manifest: dict) -> bool:
+            existing_alias = self._find_alias_for_identity(manifest, workspace_identity)
+            if existing_alias:
+                manifest["alias_states"][workspace_identity] = "registered"
+                return False
+
+            current_state = manifest["alias_states"].get(workspace_identity)
+            if current_state != "prompted":
+                return False
+
+            manifest["alias_states"].pop(workspace_identity, None)
             return True
 
         return self._with_manifest_lock(_update)

@@ -67,6 +67,8 @@ class botClient(Client):
     async def on_direct_message_create(
         self, message: botpy.message.DirectMessage
     ) -> None:
+        if self.platform.should_ignore_direct_message_event(message):
+            return
         abm = QQOfficialPlatformAdapter._parse_from_qqofficial(
             message,
             MessageType.FRIEND_MESSAGE,
@@ -83,12 +85,18 @@ class botClient(Client):
         )
         abm.session_id = abm.sender.user_id
         self.platform.remember_session_scene(abm.session_id, "friend")
-        await self.platform.maybe_prompt_setid_for_c2c(abm)
+        prompt_sent = await self.platform.maybe_prompt_setid_for_c2c(abm)
+        if prompt_sent:
+            return
         self.platform.maybe_refresh_workspace_binding_for_c2c(abm)
         self._commit(abm, message_source="c2c")
 
     def _commit(self, abm: AstrBotMessage, message_source: str | None = None) -> None:
         if self.platform.should_skip_incoming_message(abm):
+            return
+        if self.platform.should_suppress_private_message_before_setid(
+            abm, message_source
+        ):
             return
         self.platform.remember_session_message_id(abm.session_id, abm.message_id)
         event = QQOfficialMessageEvent(
@@ -151,6 +159,10 @@ class QQOfficialPlatformAdapter(Platform):
         if not sender_id:
             return False
 
+        text = (getattr(abm, "message_str", "") or "").strip().lower()
+        if text == "/setid" or text.startswith("/setid "):
+            return False
+
         should_prompt = self.workspace_registry.maybe_mark_prompted(
             appid=str(self.appid),
             raw_user_id=sender_id,
@@ -166,8 +178,16 @@ class QQOfficialPlatformAdapter(Platform):
                 msg_id=abm.message_id,
                 msg_seq=random.randint(1, 10000),
             )
+            logger.info(
+                "[QQOfficial] Outgoing onboarding prompt to %s: /setid required",
+                sender_id,
+            )
             return True
         except Exception as exc:
+            self.workspace_registry.clear_prompted_state(
+                appid=str(self.appid),
+                raw_user_id=sender_id,
+            )
             logger.warning("[QQOfficial] Failed to send /setid prompt: %s", exc)
             return False
 
@@ -350,6 +370,13 @@ class QQOfficialPlatformAdapter(Platform):
             return
 
         sent_message_id = self._extract_message_id(ret)
+        outline = plain_text or file_name or image_path or "[non-text message]"
+        logger.info(
+            "[QQOfficial] Outgoing message to %s (%s): %s",
+            session.session_id,
+            session.message_type,
+            outline,
+        )
         if sent_message_id:
             self.remember_session_message_id(session.session_id, sent_message_id)
         await super().send_by_session(session, message_chain)
@@ -363,6 +390,56 @@ class QQOfficialPlatformAdapter(Platform):
         if not session_id or not scene:
             return
         self._session_scene[session_id] = scene
+
+    def should_ignore_direct_message_event(
+        self, message: botpy.message.DirectMessage
+    ) -> bool:
+        has_guild_context = bool(
+            getattr(message, "guild_id", None)
+            or getattr(message, "src_guild_id", None)
+            or getattr(message, "channel_id", None)
+        )
+        if has_guild_context:
+            return False
+
+        logger.info(
+            "[QQOfficial] Ignoring direct_message event without guild context. id=%s event_id=%s",
+            getattr(message, "id", None),
+            getattr(message, "event_id", None),
+        )
+        return True
+
+    def should_suppress_private_message_before_setid(
+        self,
+        abm: AstrBotMessage,
+        message_source: str | None,
+    ) -> bool:
+        if message_source != "c2c":
+            return False
+
+        sender_id = getattr(getattr(abm, "sender", None), "user_id", "") or ""
+        appid = str(self.appid)
+        if not sender_id or not appid.isdigit():
+            return False
+
+        state = self.workspace_registry.get_alias_state(
+            appid=appid,
+            raw_user_id=sender_id,
+        )
+        if state != "prompted":
+            return False
+
+        text = (getattr(abm, "message_str", "") or "").strip().lower()
+        if message_source == "c2c" and (text == "/setid" or text.startswith("/setid ")):
+            return False
+
+        logger.info(
+            "[QQOfficial] Suppressing pre-setid private message. source=%s session_id=%s text=%r",
+            message_source,
+            getattr(abm, "session_id", None),
+            getattr(abm, "message_str", None),
+        )
+        return True
 
     def should_skip_incoming_message(self, abm: AstrBotMessage) -> bool:
         raw_message = getattr(abm, "raw_message", None)
