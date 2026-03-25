@@ -2,9 +2,19 @@ from pathlib import Path
 import sys
 from unittest.mock import MagicMock
 
+import pytest
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PLUGIN_ROOT = PROJECT_ROOT / "data" / "plugins"
+PLUGIN_PACKAGE_ROOT = PLUGIN_ROOT / "astrbot_plugin_mnemosyne"
+
+if not PLUGIN_PACKAGE_ROOT.exists():
+    pytest.skip(
+        "astrbot_plugin_mnemosyne plugin source not present in data/plugins",
+        allow_module_level=True,
+    )
+
 if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
 
