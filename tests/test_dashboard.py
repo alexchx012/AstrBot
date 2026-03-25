@@ -47,6 +47,7 @@ async def core_lifecycle_td(tmp_path_factory):
         except Exception:
             # 停止过程中如有异常，不影响后续清理
             pass
+        await db.engine.dispose()
 
 
 @pytest.fixture(scope="module")
