@@ -4,6 +4,7 @@ AstrBot 测试配置
 提供共享的 pytest fixtures 和测试工具。
 """
 
+import asyncio
 import json
 import os
 import sys
@@ -26,6 +27,39 @@ if str(PROJECT_ROOT) not in sys.path:
 # 设置测试环境变量
 os.environ.setdefault("TESTING", "true")
 os.environ.setdefault("ASTRBOT_TEST_MODE", "true")
+
+
+async def _run_event_loop_heartbeat():
+    while True:
+        await asyncio.sleep(0.05)
+
+
+async def _with_event_loop_heartbeat():
+    task = asyncio.create_task(_run_event_loop_heartbeat())
+    try:
+        yield
+    finally:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def event_loop_heartbeat():
+    """Keep function-scoped async tests responsive for cross-thread callbacks."""
+
+    async for _ in _with_event_loop_heartbeat():
+        yield
+
+
+@pytest_asyncio.fixture(scope="module", autouse=True)
+async def module_event_loop_heartbeat():
+    """Keep module-scoped async fixtures responsive for cross-thread callbacks."""
+
+    async for _ in _with_event_loop_heartbeat():
+        yield
 
 
 # ============================================================
