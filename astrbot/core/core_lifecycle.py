@@ -16,7 +16,7 @@ import time
 import traceback
 from asyncio import Queue
 
-from astrbot.api import logger, sp
+from astrbot.api import logger
 from astrbot.core import LogBroker, LogManager
 from astrbot.core.astrbot_config_mgr import AstrBotConfigManager
 from astrbot.core.config.default import VERSION

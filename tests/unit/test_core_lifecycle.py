@@ -443,11 +443,15 @@ class TestAstrBotCoreLifecycleInitialize:
         mock_pipeline_scheduler.initialize = AsyncMock()
         mock_astrbot_updator = MagicMock()
         mock_event_bus = MagicMock()
-        global_sp = object()
+        local_sp = MagicMock()
 
         with (
             patch("astrbot.core.core_lifecycle.astrbot_config", mock_astrbot_config),
             patch("astrbot.core.core_lifecycle.html_renderer", mock_html_renderer),
+            patch(
+                "astrbot.core.core_lifecycle.SharedPreferences",
+                return_value=local_sp,
+            ) as shared_preferences_cls,
             patch(
                 "astrbot.core.core_lifecycle.UmopConfigRouter",
                 return_value=mock_umop_config_router,
@@ -505,16 +509,15 @@ class TestAstrBotCoreLifecycleInitialize:
                 "astrbot.core.core_lifecycle.update_llm_metadata",
                 new_callable=AsyncMock,
             ),
-            patch("astrbot.core.core_lifecycle.sp", global_sp),
         ):
             await lifecycle.initialize()
 
         router_sp = umop_router_cls.call_args.kwargs["sp"]
         config_sp = config_mgr_cls.call_args.kwargs["sp"]
 
-        assert router_sp is not global_sp
-        assert config_sp is not global_sp
-        assert config_sp is router_sp
+        shared_preferences_cls.assert_called_once_with(db_helper=mock_db)
+        assert router_sp is local_sp
+        assert config_sp is local_sp
 
     @pytest.mark.asyncio
     async def test_initialize_handles_migration_failure(
