@@ -45,7 +45,8 @@ def _make_run_context(require_admin: bool, role: str = "member") -> ContextWrapp
 async def test_browser_tool_allows_non_admin_when_admin_requirement_disabled(
     monkeypatch,
 ):
-    async def _fake_get_booter(_ctx, _session_id):
+    async def _fake_get_booter(_ctx, _session_id, workspace_identity=None):
+        _ = workspace_identity
         return SimpleNamespace(browser=_FakeBrowser())
 
     monkeypatch.setattr(
@@ -65,7 +66,8 @@ async def test_browser_tool_allows_non_admin_when_admin_requirement_disabled(
 async def test_neo_skill_tool_allows_non_admin_when_admin_requirement_disabled(
     monkeypatch,
 ):
-    async def _fake_get_booter(_ctx, _session_id):
+    async def _fake_get_booter(_ctx, _session_id, workspace_identity=None):
+        _ = workspace_identity
         return SimpleNamespace(
             bay_client=object(),
             sandbox=_FakeSandbox(),

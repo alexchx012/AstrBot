@@ -38,6 +38,7 @@
 - `[Fact]` `SubAgentOrchestrator` 会从 `subagent_orchestrator.agents` 配置里读取启用的 subagent，构造成 `HandoffTool` 并注册到工具系统。Evidence: `astrbot/core/subagent_orchestrator.py:12-98`, `astrbot/core/config/default.py:146-160`
 - `[Fact]` 生命周期初始化时会调用 `_init_or_reload_subagent_orchestrator()`，因此 SubAgent 不是只存在于前端页面，而是实际挂到运行时工具链里。Evidence: `astrbot/core/core_lifecycle.py:82-99`, `astrbot/core/core_lifecycle.py:178-195`
 - `[Inference + Evidence]` AstrBot 当前的“工具系统”由 Provider 管理器里的 `llm_tools`、MCP client、SubAgent handoff 和插件注入工具共同组成，而不是单一来源。Evidence: `astrbot/core/provider/register.py:6-12`, `astrbot/core/provider/manager.py:67-83`, `astrbot/core/provider/manager.py:334-344`, `astrbot/core/subagent_orchestrator.py:77-98`
+- `[Fact]` 官方 `#6951` 已把 `shipyard_neo` 下 browser tools 和 Neo skill lifecycle tools 的运行时权限判定统一到共享的 `check_admin_permission(...)`，因此两类工具现在都会尊重 `computer_use_require_admin` 配置，而不再硬编码只允许 `admin` 角色。Evidence: `astrbot/core/computer/tools/browser.py:13-15`, `astrbot/core/computer/tools/browser.py:77-78`, `astrbot/core/computer/tools/neo_skills.py:15-17`, `astrbot/core/computer/tools/neo_skills.py:62-63`, `tests/test_computer_tool_permissions.py:44-97`
 
 ## 知识库与会话附加能力
 
