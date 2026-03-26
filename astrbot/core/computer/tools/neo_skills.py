@@ -13,6 +13,7 @@ from astrbot.core.platform.sources.qqofficial.workspace_registry import (
 from astrbot.core.skills.neo_skill_sync import NeoSkillSyncManager
 
 from ..computer_client import get_booter
+from .permissions import check_admin_permission
 
 
 def _to_jsonable(model_like: Any) -> Any:
@@ -27,12 +28,6 @@ def _to_jsonable(model_like: Any) -> Any:
 
 def _to_json_text(data: Any) -> str:
     return json.dumps(_to_jsonable(data), ensure_ascii=False, default=str)
-
-
-def _ensure_admin(context: ContextWrapper[AstrAgentContext]) -> str | None:
-    if context.context.event.role != "admin":
-        return "error: Permission denied. Skill lifecycle tools are only allowed for admin users."
-    return None
 
 
 async def _get_neo_context(
@@ -64,7 +59,7 @@ class NeoSkillToolBase(FunctionTool):
         neo_call: Callable[[Any, Any], Awaitable[Any]],
         error_action: str,
     ) -> ToolExecResult:
-        if err := _ensure_admin(context):
+        if err := check_admin_permission(context, "Using skill lifecycle tools"):
             return err
         try:
             client, sandbox = await _get_neo_context(context)
@@ -397,7 +392,7 @@ class PromoteSkillCandidateTool(NeoSkillToolBase):
         stage: str = "canary",
         sync_to_local: bool = True,
     ) -> ToolExecResult:
-        if err := _ensure_admin(context):
+        if err := check_admin_permission(context, "Using skill lifecycle tools"):
             return err
         if stage not in {"canary", "stable"}:
             return "Error promoting skill candidate: stage must be canary or stable."
