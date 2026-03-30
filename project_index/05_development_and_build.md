@@ -2,7 +2,7 @@
 
 ## Python 开发面
 
-- `[Fact]` Python 包元数据定义在 `pyproject.toml`；项目名是 `AstrBot`，当前版本是 `4.22.0`，包脚本入口是 `astrbot`。Evidence: `pyproject.toml:1-80`
+- `[Fact]` Python 包元数据定义在 `pyproject.toml`；项目名是 `AstrBot`，当前版本是 `4.22.2`，包脚本入口是 `astrbot`。Evidence: `pyproject.toml:1-80`
 - `[Fact]` 当前包元数据要求 `requires-python = ">=3.12"`。Evidence: `pyproject.toml:1-7`
 - `[Fact]` 开发依赖至少包含 `pytest`、`pytest-asyncio`、`pytest-cov`、`ruff`、`commitizen`。Evidence: `pyproject.toml:69-76`
 - `[Fact]` `ruff` 规则、`pyright`、Hatch 构建和 wheel artifact 也都在 `pyproject.toml` 中声明。Evidence: `pyproject.toml:81-127`

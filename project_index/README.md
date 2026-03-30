@@ -19,7 +19,7 @@
 
 ## 当前索引锚点
 
-- `[Fact]` 当前仓库是 AstrBot，版本号在 `pyproject.toml` 和默认配置里都写成 `4.22.0`。Evidence: `pyproject.toml:1-7`, `astrbot/core/config/default.py:8-10`
+- `[Fact]` 当前仓库是 AstrBot，版本号在 `pyproject.toml` 和默认配置里都写成 `4.22.2`。Evidence: `pyproject.toml:1-6`, `astrbot/core/config/default.py:6-9`
 - `[Fact]` 仓库同时包含 Python 主体、内置 Dashboard 前端、内置控制面板后端、文档站、测试集与发布工作流。Evidence: `pyproject.toml:1-127`, `dashboard/package.json:1-77`, `docs/package.json:1-13`, `.github/workflows/coverage_test.yml:1-45`, `.github/workflows/dashboard_ci.yml:1-55`, `.github/workflows/build-docs.yml:1-43`
 - `[Don't know]` 被删除的旧 `project_index/` 具体措辞和细节在当前工作树中不可恢复；本次重建仅保证文件名结构与 `AGENTS.md` 要求一致，并以当前源码为准。
 
