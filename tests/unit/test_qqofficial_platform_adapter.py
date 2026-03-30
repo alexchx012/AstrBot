@@ -44,6 +44,13 @@ def _make_message(*, message_id: str, event_id: str | None = None) -> AstrBotMes
     return abm
 
 
+def _make_async_parse_stub(abm: AstrBotMessage):
+    async def _stub(_message, _message_type):
+        return abm
+
+    return staticmethod(_stub)
+
+
 def _mark_prompted(adapter: QQOfficialPlatformAdapter) -> None:
     adapter.workspace_registry.maybe_mark_prompted(
         appid=str(adapter.appid),
@@ -114,7 +121,7 @@ async def test_on_c2c_message_create_stops_after_first_prompt(monkeypatch):
     monkeypatch.setattr(
         QQOfficialPlatformAdapter,
         "_parse_from_qqofficial",
-        staticmethod(lambda _message, _message_type: abm),
+        _make_async_parse_stub(abm),
     )
     monkeypatch.setattr(adapter, "maybe_prompt_setid_for_c2c", prompt_mock)
     monkeypatch.setattr(
@@ -140,7 +147,7 @@ async def test_on_c2c_message_create_commits_when_prompt_not_sent(monkeypatch):
     monkeypatch.setattr(
         QQOfficialPlatformAdapter,
         "_parse_from_qqofficial",
-        staticmethod(lambda _message, _message_type: abm),
+        _make_async_parse_stub(abm),
     )
     monkeypatch.setattr(adapter, "maybe_prompt_setid_for_c2c", prompt_mock)
     monkeypatch.setattr(
@@ -170,7 +177,7 @@ async def test_on_c2c_message_create_allows_first_message_setid_without_prompt(
     monkeypatch.setattr(
         QQOfficialPlatformAdapter,
         "_parse_from_qqofficial",
-        staticmethod(lambda _message, _message_type: abm),
+        _make_async_parse_stub(abm),
     )
     monkeypatch.setattr(QQOfficialMessageEvent, "post_c2c_message", post_mock)
     monkeypatch.setattr(
@@ -206,7 +213,7 @@ async def test_on_c2c_message_create_commits_when_prompt_send_fails(
     monkeypatch.setattr(
         QQOfficialPlatformAdapter,
         "_parse_from_qqofficial",
-        staticmethod(lambda _message, _message_type: abm),
+        _make_async_parse_stub(abm),
     )
     monkeypatch.setattr(QQOfficialMessageEvent, "post_c2c_message", post_mock)
     monkeypatch.setattr(
@@ -240,7 +247,7 @@ async def test_on_direct_message_create_ignores_events_without_guild_context(
     monkeypatch.setattr(
         QQOfficialPlatformAdapter,
         "_parse_from_qqofficial",
-        staticmethod(lambda _message, _message_type: direct_abm),
+        _make_async_parse_stub(direct_abm),
     )
     monkeypatch.setattr(adapter, "commit_event", commit_event_mock)
 
@@ -263,7 +270,7 @@ async def test_on_direct_message_create_allows_events_with_guild_context(monkeyp
     monkeypatch.setattr(
         QQOfficialPlatformAdapter,
         "_parse_from_qqofficial",
-        staticmethod(lambda _message, _message_type: direct_abm),
+        _make_async_parse_stub(direct_abm),
     )
     monkeypatch.setattr(adapter, "commit_event", commit_event_mock)
 
@@ -287,7 +294,7 @@ async def test_on_c2c_message_create_suppresses_prompted_non_command(
     monkeypatch.setattr(
         QQOfficialPlatformAdapter,
         "_parse_from_qqofficial",
-        staticmethod(lambda _message, _message_type: abm),
+        _make_async_parse_stub(abm),
     )
     monkeypatch.setattr(adapter, "maybe_prompt_setid_for_c2c", prompt_mock)
     monkeypatch.setattr(
@@ -316,7 +323,7 @@ async def test_on_c2c_message_create_allows_setid_when_prompted(monkeypatch, tmp
     monkeypatch.setattr(
         QQOfficialPlatformAdapter,
         "_parse_from_qqofficial",
-        staticmethod(lambda _message, _message_type: abm),
+        _make_async_parse_stub(abm),
     )
     monkeypatch.setattr(adapter, "maybe_prompt_setid_for_c2c", prompt_mock)
     monkeypatch.setattr(
