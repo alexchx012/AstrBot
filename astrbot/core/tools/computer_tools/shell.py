@@ -57,7 +57,9 @@ class ExecuteShellTool(FunctionTool):
         if permission_error := check_admin_permission(context, "Shell execution"):
             return permission_error
 
-        workspace_identity = resolve_workspace_identity_from_event(context.context.event)
+        workspace_identity = resolve_workspace_identity_from_event(
+            context.context.event
+        )
         sb = await get_booter(
             context.context.context,
             context.context.event.unified_msg_origin,

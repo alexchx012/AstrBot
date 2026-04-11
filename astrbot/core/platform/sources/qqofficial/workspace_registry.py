@@ -167,6 +167,7 @@ class QQOfficialWorkspaceRegistry:
                 result = callback(manifest)
                 manifest["updated_at"] = _utc_now()
                 self._write_manifest_unlocked(manifest)
+                self._normalize_workspace_metadata_permissions()
                 return result
             finally:
                 if fcntl is not None:
@@ -451,6 +452,30 @@ class QQOfficialWorkspaceRegistry:
                 if dir_path.is_symlink():
                     continue
                 self._normalize_mode(dir_path, is_dir=True)
+
+            for filename in filenames:
+                file_path = root_path / filename
+                if file_path.is_symlink():
+                    continue
+                self._normalize_mode(file_path, is_dir=False)
+
+    def _normalize_workspace_metadata_permissions(self) -> None:
+        workspace_root = self._workspace_root()
+        if not workspace_root.is_dir():
+            return
+
+        for root, dirnames, filenames in os.walk(workspace_root):
+            root_path = Path(root)
+            self._normalize_mode(root_path, is_dir=True)
+
+            kept_dirnames: list[str] = []
+            for dirname in dirnames:
+                dir_path = root_path / dirname
+                if dir_path.is_symlink():
+                    continue
+                self._normalize_mode(dir_path, is_dir=True)
+                kept_dirnames.append(dirname)
+            dirnames[:] = kept_dirnames
 
             for filename in filenames:
                 file_path = root_path / filename

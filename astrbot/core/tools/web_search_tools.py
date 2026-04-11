@@ -189,6 +189,58 @@ async def _tavily_extract(provider_settings: dict, payload: dict) -> list[dict]:
             return results
 
 
+def _build_tavily_search_payload(**kwargs) -> dict:
+    search_depth = kwargs.get("search_depth", "basic")
+    if search_depth not in ["basic", "advanced"]:
+        search_depth = "basic"
+
+    topic = kwargs.get("topic", "general")
+    if topic not in ["general", "news"]:
+        topic = "general"
+
+    payload = {
+        "query": kwargs["query"],
+        "max_results": kwargs.get("max_results", 7),
+        "include_favicon": True,
+        "search_depth": search_depth,
+        "topic": topic,
+    }
+
+    days = kwargs.get("days")
+    normalized_days = days if isinstance(days, int) and days > 0 else None
+    time_range = kwargs.get("time_range", "")
+    normalized_time_range = (
+        time_range if time_range in ["day", "week", "month", "year"] else ""
+    )
+    normalized_start_date = str(kwargs.get("start_date", "")).strip()
+    normalized_end_date = str(kwargs.get("end_date", "")).strip()
+
+    active_time_filters = []
+    if topic == "news" and normalized_days is not None:
+        active_time_filters.append("days")
+    if normalized_time_range:
+        active_time_filters.append("time_range")
+    if normalized_start_date or normalized_end_date:
+        active_time_filters.append("date_range")
+
+    if len(active_time_filters) > 1:
+        raise ValueError(
+            "Tavily search time filters are mutually exclusive: use only one "
+            "of days, time_range, or start_date/end_date."
+        )
+
+    if topic == "news" and normalized_days is not None:
+        payload["days"] = normalized_days
+    if normalized_time_range:
+        payload["time_range"] = normalized_time_range
+    if normalized_start_date:
+        payload["start_date"] = normalized_start_date
+    if normalized_end_date:
+        payload["end_date"] = normalized_end_date
+
+    return payload
+
+
 async def _bocha_search(
     provider_settings: dict,
     payload: dict,
@@ -319,19 +371,19 @@ class TavilyWebSearchTool(FunctionTool[AstrAgentContext]):
                 },
                 "days": {
                     "type": "integer",
-                    "description": 'Optional. The number of days back from the current date to include in the search results. This only applies when topic is "news".',
+                    "description": 'Optional. The number of days back from the current date to include in the search results. Only use this when topic is "news". Do not combine it with time_range or start_date/end_date.',
                 },
                 "time_range": {
                     "type": "string",
-                    "description": 'Optional. The time range back from the current date to include in the search results. Must be one of "day", "week", "month", "year".',
+                    "description": 'Optional. The time range back from the current date to include in the search results. Must be one of "day", "week", "month", "year". Do not combine it with days or start_date/end_date.',
                 },
                 "start_date": {
                     "type": "string",
-                    "description": "Optional. The start date for the search results in the format YYYY-MM-DD.",
+                    "description": "Optional. The start date for the search results in the format YYYY-MM-DD. Do not combine it with days or time_range.",
                 },
                 "end_date": {
                     "type": "string",
-                    "description": "Optional. The end date for the search results in the format YYYY-MM-DD.",
+                    "description": "Optional. The end date for the search results in the format YYYY-MM-DD. Do not combine it with days or time_range.",
                 },
             },
             "required": ["query"],
@@ -343,31 +395,7 @@ class TavilyWebSearchTool(FunctionTool[AstrAgentContext]):
         if not provider_settings.get("websearch_tavily_key", []):
             return "Error: Tavily API key is not configured in AstrBot."
 
-        search_depth = kwargs.get("search_depth", "basic")
-        if search_depth not in ["basic", "advanced"]:
-            search_depth = "basic"
-
-        topic = kwargs.get("topic", "general")
-        if topic not in ["general", "news"]:
-            topic = "general"
-
-        payload = {
-            "query": kwargs["query"],
-            "max_results": kwargs.get("max_results", 7),
-            "include_favicon": True,
-            "search_depth": search_depth,
-            "topic": topic,
-        }
-        if topic == "news":
-            payload["days"] = kwargs.get("days", 3)
-
-        time_range = kwargs.get("time_range", "")
-        if time_range in ["day", "week", "month", "year"]:
-            payload["time_range"] = time_range
-        if kwargs.get("start_date"):
-            payload["start_date"] = kwargs["start_date"]
-        if kwargs.get("end_date"):
-            payload["end_date"] = kwargs["end_date"]
+        payload = _build_tavily_search_payload(**kwargs)
 
         results = await _tavily_search(provider_settings, payload)
         if not results:

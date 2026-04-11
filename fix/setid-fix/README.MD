@@ -20,6 +20,7 @@ Chronology:
 - `07_qq_official_first_shipyard_binding_timing_fix.md`
 - `08_qq_official_workspace_host_other_write_fix.md`
 - `09_qq_official_setid_prompt_state_and_cleanup_fix.md`
+- `10_qq_official_workspace_metadata_host_write_fix.md`
 
 Current test status from the latest real-device run:
 
@@ -29,3 +30,4 @@ Current test status from the latest real-device run:
 - host-side write/read through the stable entry works without `sudo`
 - repeated `/setid tca001` is idempotent
 - restart keeps the same workspace binding and file contents
+- host-side direct writes under `data/qq_workspaces/` metadata paths also work

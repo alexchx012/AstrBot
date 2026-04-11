@@ -172,6 +172,35 @@ def test_register_alias_creates_manifest_and_workspace_dir(monkeypatch, tmp_path
     assert manifest["alias_states"]["v1:123456:user-openid"] == "registered"
 
 
+def test_register_alias_normalizes_metadata_permissions_for_other_users(
+    monkeypatch, tmp_path: Path
+):
+    monkeypatch.setenv("ASTRBOT_ROOT", str(tmp_path))
+    registry = QQOfficialWorkspaceRegistry()
+
+    registry.register_alias(
+        appid="123456",
+        raw_user_id="user-openid",
+        alias="abc123",
+    )
+
+    workspace_root = tmp_path / "data" / "qq_workspaces"
+    appid_dir = workspace_root / "123456"
+    alias_dir = appid_dir / "abc123"
+    manifest_path = workspace_root / "manifest.json"
+    lock_path = workspace_root / ".manifest.lock"
+    readme_path = alias_dir / "README.md"
+
+    for directory in (workspace_root, appid_dir, alias_dir):
+        mode = stat.S_IMODE(directory.stat().st_mode)
+        assert mode & stat.S_IWOTH
+        assert mode & stat.S_IXOTH
+
+    for file_path in (manifest_path, lock_path, readme_path):
+        mode = stat.S_IMODE(file_path.stat().st_mode)
+        assert mode & stat.S_IWOTH
+
+
 def test_register_alias_rejects_invalid_alias(monkeypatch, tmp_path: Path):
     monkeypatch.setenv("ASTRBOT_ROOT", str(tmp_path))
     registry = QQOfficialWorkspaceRegistry()
@@ -331,6 +360,52 @@ def test_refresh_workspace_binding_normalizes_workspace_permissions_for_other_us
     assert workspace_mode & stat.S_IWOTH
     assert workspace_mode & stat.S_IXOTH
     assert nested_file_mode & stat.S_IWOTH
+
+
+def test_refresh_workspace_binding_normalizes_existing_metadata_permissions(
+    monkeypatch, tmp_path: Path
+):
+    monkeypatch.setenv("ASTRBOT_ROOT", str(tmp_path))
+    registry = QQOfficialWorkspaceRegistry()
+    registry.register_alias(
+        appid="123456",
+        raw_user_id="user-openid",
+        alias="abc123",
+    )
+
+    workspace_root = tmp_path / "data" / "qq_workspaces"
+    appid_dir = workspace_root / "123456"
+    alias_dir = appid_dir / "abc123"
+    manifest_path = workspace_root / "manifest.json"
+    lock_path = workspace_root / ".manifest.lock"
+    readme_path = alias_dir / "README.md"
+
+    os.chmod(workspace_root, 0o755)
+    os.chmod(appid_dir, 0o755)
+    os.chmod(alias_dir, 0o755)
+    os.chmod(manifest_path, 0o644)
+    os.chmod(lock_path, 0o644)
+    os.chmod(readme_path, 0o644)
+
+    workspace_identity = "v1:123456:user-openid"
+    session_id = uuid.uuid5(uuid.NAMESPACE_DNS, workspace_identity).hex
+    ship_id = "ship-001"
+    _create_ship_workspace(tmp_path, ship_id, session_id, "ship_user_1")
+    _create_bay_db(tmp_path, session_id, ship_id)
+
+    registry.refresh_workspace_binding(
+        workspace_identity,
+        allow_fallback=True,
+    )
+
+    for directory in (workspace_root, appid_dir, alias_dir):
+        mode = stat.S_IMODE(directory.stat().st_mode)
+        assert mode & stat.S_IWOTH
+        assert mode & stat.S_IXOTH
+
+    for file_path in (manifest_path, lock_path, readme_path):
+        mode = stat.S_IMODE(file_path.stat().st_mode)
+        assert mode & stat.S_IWOTH
 
 
 def test_refresh_workspace_binding_uses_unique_fallback_when_bay_unavailable(
