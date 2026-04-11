@@ -4,7 +4,7 @@
 
 - `[Fact]` 平台适配器通过 `register_platform_adapter()` 注册，注册元数据里包含描述、默认配置模板、logo、流式消息支持和配置元数据。Evidence: `astrbot/core/platform/register.py:11-63`
 - `[Fact]` `PlatformManager.load_platform()` 会按 `type` 动态导入平台实现，并对 `id` 做合法性校验与清洗。Evidence: `astrbot/core/platform/manager.py:102-209`
-- `[Fact]` 当前源码里明确出现的内建平台类型有 `aiocqhttp`、`qq_official`、`qq_official_webhook`、`lark`、`dingtalk`、`telegram`、`wecom`、`wecom_ai_bot`、`weixin_oc`、`weixin_official_account`、`discord`、`misskey`、`slack`、`satori`、`line`、`kook`，另加初始化时无条件附加的 `webchat`。Evidence: `astrbot/core/platform/manager.py:97-100`, `astrbot/core/platform/manager.py:128-187`, `astrbot/core/platform/sources/weixin_oc/weixin_oc_adapter.py`
+- `[Fact]` 当前源码里明确出现的内建平台类型有 `aiocqhttp`、`qq_official`、`qq_official_webhook`、`lark`、`dingtalk`、`telegram`、`wecom`、`wecom_ai_bot`、`weixin_oc`、`weixin_official_account`、`discord`、`misskey`、`slack`、`satori`、`line`、`kook`、`mattermost`，另加初始化时无条件附加的 `webchat`。Evidence: `astrbot/core/platform/manager.py:97-100`, `astrbot/core/platform/manager.py:128-209`, `astrbot/core/platform/sources/mattermost/mattermost_adapter.py`
 - `[Fact]` 默认配置里列出了支持统一 Webhook 的平台类型。Evidence: `astrbot/core/config/default.py:11-20`
 - `[Fact]` Lark 流式发送现在会延迟到首个文本 token 才创建 CardKit 卡片；当 Agent 流式输出发出 `type="break"` 的工具调用边界信号时，当前卡片会先关闭，后续文本再懒创建下一张卡片。Evidence: `astrbot/core/platform/sources/lark/lark_event.py:743-874`, `astrbot/core/astr_agent_run_util.py:167-175`
 
@@ -32,13 +32,14 @@
 - `[Fact]` 技能 ZIP 安装现在同时支持两种归档结构：根目录直接包含 `SKILL.md`，或 ZIP 里只有一个顶层技能目录；安装时还会对技能名做归一化并校验，支持中文技能名，同时拒绝多顶层目录、绝对路径和 `..` 路径。Evidence: `astrbot/core/skills/skill_manager.py:538-649`
 - `[Fact]` 控制面板支持从 ZIP 上传单个或多个 skills，并在成功后尝试同步到活跃 sandbox；批量上传还会把重复技能归类为 `skipped`，而不是一律算失败。Evidence: `astrbot/dashboard/routes/skills.py:147-191`, `astrbot/dashboard/routes/skills.py:193-367`
 - `[Fact]` Skills 路由还内建了面向 Shipyard Neo 的候选版本、发布、回滚、同步能力。Evidence: `astrbot/dashboard/routes/skills.py:47-121`
+- `[Fact]` Web search 能力现在由内建 tools 提供，至少包含 Tavily、BoCha、Brave、Baidu AI Search 和 Tavily 网页提取工具，而不是通过内置 Star 暴露。Evidence: `astrbot/core/tools/web_search_tools.py:16-22`, `astrbot/core/tools/web_search_tools.py:347-617`
 
 ## SubAgent、Tools 与 MCP
 
 - `[Fact]` `SubAgentOrchestrator` 会从 `subagent_orchestrator.agents` 配置里读取启用的 subagent，构造成 `HandoffTool` 并注册到工具系统。Evidence: `astrbot/core/subagent_orchestrator.py:12-98`, `astrbot/core/config/default.py:146-160`
 - `[Fact]` 生命周期初始化时会调用 `_init_or_reload_subagent_orchestrator()`，因此 SubAgent 不是只存在于前端页面，而是实际挂到运行时工具链里。Evidence: `astrbot/core/core_lifecycle.py:82-99`, `astrbot/core/core_lifecycle.py:178-195`
 - `[Inference + Evidence]` AstrBot 当前的“工具系统”由 Provider 管理器里的 `llm_tools`、MCP client、SubAgent handoff 和插件注入工具共同组成，而不是单一来源。Evidence: `astrbot/core/provider/register.py:6-12`, `astrbot/core/provider/manager.py:67-83`, `astrbot/core/provider/manager.py:334-344`, `astrbot/core/subagent_orchestrator.py:77-98`
-- `[Fact]` 官方 `#6951` 已把 `shipyard_neo` 下 browser tools 和 Neo skill lifecycle tools 的运行时权限判定统一到共享的 `check_admin_permission(...)`，因此两类工具现在都会尊重 `computer_use_require_admin` 配置，而不再硬编码只允许 `admin` 角色。Evidence: `astrbot/core/computer/tools/browser.py:13-15`, `astrbot/core/computer/tools/browser.py:77-78`, `astrbot/core/computer/tools/neo_skills.py:15-17`, `astrbot/core/computer/tools/neo_skills.py:62-63`, `tests/test_computer_tool_permissions.py:44-97`
+- `[Fact]` `shipyard_neo` 下 browser tools 和 Neo skill lifecycle tools 的运行时权限判定统一到共享的 `check_admin_permission(...)`，因此两类工具现在都会尊重 `computer_use_require_admin` 配置，而不再硬编码只允许 `admin` 角色。Evidence: `astrbot/core/tools/computer_tools/shipyard_neo/browser.py:13-15`, `astrbot/core/tools/computer_tools/shipyard_neo/browser.py:83-195`, `astrbot/core/tools/computer_tools/shipyard_neo/neo_skills.py:15-17`, `astrbot/core/tools/computer_tools/shipyard_neo/neo_skills.py:67-408`, `tests/test_computer_tool_permissions.py`
 
 ## 知识库与会话附加能力
 

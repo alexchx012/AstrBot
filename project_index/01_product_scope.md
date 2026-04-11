@@ -15,7 +15,8 @@
 ## 内建能力范围
 
 - `[Fact]` 默认配置中显式包含平台设置、Provider 设置、STT/TTS、长时记忆、内容安全、T2I、Dashboard、SubAgent orchestrator、知识库、插件集、Cron 相关能力开关。Evidence: `astrbot/core/config/default.py:21-248`
-- `[Fact]` 内置 Star（即插件）目录中至少有 `astrbot`、`builtin_commands`、`session_controller`、`web_searcher` 四组内置能力。Evidence: `astrbot/builtin_stars/astrbot/metadata.yaml`, `astrbot/builtin_stars/builtin_commands/metadata.yaml`, `astrbot/builtin_stars/session_controller/metadata.yaml`, `astrbot/builtin_stars/web_searcher/metadata.yaml`
+- `[Fact]` 当前内置 Star（即插件）目录里至少还有 `astrbot`、`builtin_commands`、`session_controller` 三组内置能力；旧的 `web_searcher` 内置 Star 已不在当前工作树中。Evidence: `astrbot/builtin_stars/astrbot/metadata.yaml`, `astrbot/builtin_stars/builtin_commands/metadata.yaml`, `astrbot/builtin_stars/session_controller/metadata.yaml`
+- `[Fact]` Web search 现在以内建 tools 的形式存在，而不是内置 Star；工具定义集中在 `astrbot/core/tools/web_search_tools.py`。Evidence: `astrbot/core/tools/web_search_tools.py:16-22`, `astrbot/core/tools/web_search_tools.py:347-617`
 - `[Fact]` WebChat 是内建平台，而不是单独的外部插件；`PlatformManager.initialize()` 会无条件附加 `WebChatAdapter`。Evidence: `astrbot/core/platform/manager.py:97-100`
 
 ## 内建平台与模型接入
