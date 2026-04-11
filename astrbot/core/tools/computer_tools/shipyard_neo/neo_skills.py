@@ -7,13 +7,18 @@ from astrbot.api import FunctionTool
 from astrbot.core.agent.run_context import ContextWrapper
 from astrbot.core.agent.tool import ToolExecResult
 from astrbot.core.astr_agent_context import AstrAgentContext
+from astrbot.core.computer.computer_client import get_booter
 from astrbot.core.platform.sources.qqofficial.workspace_registry import (
     resolve_workspace_identity_from_event,
 )
 from astrbot.core.skills.neo_skill_sync import NeoSkillSyncManager
+from astrbot.core.tools.computer_tools.util import check_admin_permission
+from astrbot.core.tools.registry import builtin_tool
 
-from ..computer_client import get_booter
-from .permissions import check_admin_permission
+_SHIPYARD_NEO_TOOL_CONFIG = {
+    "provider_settings.computer_use_runtime": "sandbox",
+    "provider_settings.sandbox.booter": "shipyard_neo",
+}
 
 
 def _to_jsonable(model_like: Any) -> Any:
@@ -69,6 +74,7 @@ class NeoSkillToolBase(FunctionTool):
             return f"{self.error_prefix} {error_action}: {str(e)}"
 
 
+@builtin_tool(config=_SHIPYARD_NEO_TOOL_CONFIG)
 @dataclass
 class GetExecutionHistoryTool(NeoSkillToolBase):
     name: str = "astrbot_get_execution_history"
@@ -115,6 +121,7 @@ class GetExecutionHistoryTool(NeoSkillToolBase):
         )
 
 
+@builtin_tool(config=_SHIPYARD_NEO_TOOL_CONFIG)
 @dataclass
 class AnnotateExecutionTool(NeoSkillToolBase):
     name: str = "astrbot_annotate_execution"
@@ -152,6 +159,7 @@ class AnnotateExecutionTool(NeoSkillToolBase):
         )
 
 
+@builtin_tool(config=_SHIPYARD_NEO_TOOL_CONFIG)
 @dataclass
 class CreateSkillPayloadTool(NeoSkillToolBase):
     name: str = "astrbot_create_skill_payload"
@@ -199,6 +207,7 @@ class CreateSkillPayloadTool(NeoSkillToolBase):
         )
 
 
+@builtin_tool(config=_SHIPYARD_NEO_TOOL_CONFIG)
 @dataclass
 class GetSkillPayloadTool(NeoSkillToolBase):
     name: str = "astrbot_get_skill_payload"
@@ -225,6 +234,7 @@ class GetSkillPayloadTool(NeoSkillToolBase):
         )
 
 
+@builtin_tool(config=_SHIPYARD_NEO_TOOL_CONFIG)
 @dataclass
 class CreateSkillCandidateTool(NeoSkillToolBase):
     name: str = "astrbot_create_skill_candidate"
@@ -278,6 +288,7 @@ class CreateSkillCandidateTool(NeoSkillToolBase):
         )
 
 
+@builtin_tool(config=_SHIPYARD_NEO_TOOL_CONFIG)
 @dataclass
 class ListSkillCandidatesTool(NeoSkillToolBase):
     name: str = "astrbot_list_skill_candidates"
@@ -315,6 +326,7 @@ class ListSkillCandidatesTool(NeoSkillToolBase):
         )
 
 
+@builtin_tool(config=_SHIPYARD_NEO_TOOL_CONFIG)
 @dataclass
 class EvaluateSkillCandidateTool(NeoSkillToolBase):
     name: str = "astrbot_evaluate_skill_candidate"
@@ -355,6 +367,7 @@ class EvaluateSkillCandidateTool(NeoSkillToolBase):
         )
 
 
+@builtin_tool(config=_SHIPYARD_NEO_TOOL_CONFIG)
 @dataclass
 class PromoteSkillCandidateTool(NeoSkillToolBase):
     name: str = "astrbot_promote_skill_candidate"
@@ -425,6 +438,7 @@ class PromoteSkillCandidateTool(NeoSkillToolBase):
             return f"Error promoting skill candidate: {str(e)}"
 
 
+@builtin_tool(config=_SHIPYARD_NEO_TOOL_CONFIG)
 @dataclass
 class ListSkillReleasesTool(NeoSkillToolBase):
     name: str = "astrbot_list_skill_releases"
@@ -465,6 +479,7 @@ class ListSkillReleasesTool(NeoSkillToolBase):
         )
 
 
+@builtin_tool(config=_SHIPYARD_NEO_TOOL_CONFIG)
 @dataclass
 class RollbackSkillReleaseTool(NeoSkillToolBase):
     name: str = "astrbot_rollback_skill_release"
@@ -491,6 +506,7 @@ class RollbackSkillReleaseTool(NeoSkillToolBase):
         )
 
 
+@builtin_tool(config=_SHIPYARD_NEO_TOOL_CONFIG)
 @dataclass
 class SyncSkillReleaseTool(NeoSkillToolBase):
     name: str = "astrbot_sync_skill_release"
